@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:red_carga/core/theme.dart';
+import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 
 void main() {
   runApp(const MainApp());
@@ -9,12 +11,12 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+    final materialTheme = MaterialTheme(const TextTheme());
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: materialTheme.light(),
+      darkTheme: materialTheme.dark(),
+      home: const MainPage(role: UserRole.customer), 
     );
   }
 }

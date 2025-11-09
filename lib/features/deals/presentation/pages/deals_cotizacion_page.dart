@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/presentation/widgets/cotizacion_card.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_view_cotizacion.dart';
 
 class CotizacionPage extends StatefulWidget {
   const CotizacionPage({super.key});
@@ -80,7 +81,7 @@ class _CotizacionPageState extends State<CotizacionPage>
                 ),
               ),
               
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               
               // Contenido de los tabs
               Expanded(
@@ -140,6 +141,25 @@ class _CotizacionPageState extends State<CotizacionPage>
     );
   }
 
+  void _navigateToDetalles(BuildContext context, String empresaNombre, String solicitudNombre, String precio) {
+    final tabName = _tabController.index == 0 
+        ? 'todas' 
+        : _tabController.index == 1 
+            ? 'en trato' 
+            : 'en marcha';
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ViewCotizacionPage(
+          tabOrigen: tabName,
+          empresaNombre: empresaNombre,
+          solicitudNombre: solicitudNombre,
+          precio: precio,
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabContent(String titulo, String descripcion) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 0),
@@ -161,13 +181,13 @@ class _CotizacionPageState extends State<CotizacionPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Título del tab
-                Text(
+                /*Text(
                   titulo,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: rcColor6,
                     fontWeight: FontWeight.bold,
                   ),
-                ),
+                ),*/
                 const SizedBox(height: 8),
                 // Descripción del tab
                 Text(
@@ -186,7 +206,6 @@ class _CotizacionPageState extends State<CotizacionPage>
                 // Barra de búsqueda
                 _buildSearchBar(),
                 
-                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -202,9 +221,9 @@ class _CotizacionPageState extends State<CotizacionPage>
                   calificacion: 3,
                   precio: 's/1000',
                   onDetalles: () {
-                    // TODO: Navegar a detalles
+                    _navigateToDetalles(context, 'Empresa 1', 'Solicitud 1', 's/1000');
                   },
-                  onChat: () {
+                  onChat: _tabController.index == 0 ? null : () {
                     // TODO: Navegar a chat
                   },
                 ),
@@ -214,9 +233,9 @@ class _CotizacionPageState extends State<CotizacionPage>
                   calificacion: 4,
                   precio: 's/1200',
                   onDetalles: () {
-                    // TODO: Navegar a detalles
+                    _navigateToDetalles(context, 'Empresa 2', 'Solicitud 1', 's/1200');
                   },
-                  onChat: () {
+                  onChat: _tabController.index == 0 ? null : () {
                     // TODO: Navegar a chat
                   },
                 ),
@@ -226,9 +245,9 @@ class _CotizacionPageState extends State<CotizacionPage>
                   calificacion: 5,
                   precio: 's/900',
                   onDetalles: () {
-                    // TODO: Navegar a detalles
+                    _navigateToDetalles(context, 'Empresa 3', 'Solicitud 1', 's/900');
                   },
-                  onChat: () {
+                  onChat: _tabController.index == 0 ? null : () {
                     // TODO: Navegar a chat
                   },
                 ),
@@ -242,7 +261,7 @@ class _CotizacionPageState extends State<CotizacionPage>
 
   Widget _buildSolicitudSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: rcColor1,
         borderRadius: BorderRadius.circular(12),
@@ -257,6 +276,7 @@ class _CotizacionPageState extends State<CotizacionPage>
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: rcColor6,
                   fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
               Icon(
@@ -299,7 +319,8 @@ class _CotizacionPageState extends State<CotizacionPage>
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: rcColor1,
+        color: rcWhite,
+        border: Border.all(color: rcColor8),
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextField(
@@ -315,7 +336,7 @@ class _CotizacionPageState extends State<CotizacionPage>
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: 12,
+            vertical: 10,
           ),
         ),
       ),

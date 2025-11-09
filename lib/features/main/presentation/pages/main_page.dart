@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:red_carga/features/deals/presentation/pages/chats_page.dart';
-import 'package:red_carga/features/deals/presentation/pages/cotizacion_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_chats_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
@@ -22,7 +22,7 @@ class _MainPageState extends State<MainPage> {
   late final List<Widget> _customerPages = <Widget>[
     const HomePage(),
     const CotizacionPage(),
-    const ChatsPage(),
+    ChatsPage(userRole: UserRole.customer),
     const _Stub('Perfil'),
   ];
 
@@ -30,7 +30,7 @@ class _MainPageState extends State<MainPage> {
     const HomePage(),
     const _Stub('Rutas'),
     const _Stub('Documentos'),
-    const ChatsPage(),
+    ChatsPage(userRole: UserRole.provider),
     const _Stub('Perfil'),
   ];
 

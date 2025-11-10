@@ -30,8 +30,8 @@ class RcStepIndicator extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isCompleted || isCurrent
-                    ? RcColors.rcColor5
-                    : RcColors.white.withOpacity(0.9),
+                    ? rcColor5
+                    : rcWhite.withOpacity(0.9),
               ),
               child: Center(
                 child: Text(
@@ -42,8 +42,8 @@ class RcStepIndicator extends StatelessWidget {
                         ? FontWeight.bold
                         : FontWeight.normal,
                     color: (isCompleted || isCurrent)
-                        ? RcColors.white
-                        : RcColors.rcColor6.withOpacity(0.5),
+                        ? rcWhite
+                        : rcColor6.withOpacity(0.5),
                   ),
                 ),
               ),
@@ -56,8 +56,8 @@ class RcStepIndicator extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   color: isCompleted
-                      ? RcColors.rcColor5
-                      : RcColors.rcColor2.withOpacity(0.3),
+                      ? rcColor5
+                      : rcColor2.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -67,4 +67,5 @@ class RcStepIndicator extends StatelessWidget {
     );
   }
 }
+
 

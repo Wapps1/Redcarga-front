@@ -14,7 +14,7 @@ class RcBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: RcColors.white,
+      color: rcWhite,
       child: CustomPaint(
         painter: RcBackgroundPainter(),
         size: Size.infinite,
@@ -35,7 +35,7 @@ class RcBackgroundPainter extends CustomPainter {
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 250);
 
     // Óvalo rojo (izquierda)
-    paint.color = RcColors.rcColor5.withOpacity(0.65);
+    paint.color = rcColor5.withOpacity(0.65);
     canvas.drawOval(
       Rect.fromLTWH(
         -1.00 * w,
@@ -47,7 +47,7 @@ class RcBackgroundPainter extends CustomPainter {
     );
 
     // Óvalo naranja (centro arriba)
-    paint.color = RcColors.rcColor2.withOpacity(0.50);
+    paint.color = rcColor2.withOpacity(0.50);
     canvas.drawOval(
       Rect.fromLTWH(
         0.40 * w,
@@ -59,7 +59,7 @@ class RcBackgroundPainter extends CustomPainter {
     );
 
     // Óvalo rosa (derecha)
-    paint.color = RcColors.rcColor3.withOpacity(0.90);
+    paint.color = rcColor3.withOpacity(0.90);
     canvas.drawOval(
       Rect.fromLTWH(
         0.54 * w,
@@ -74,4 +74,5 @@ class RcBackgroundPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
 

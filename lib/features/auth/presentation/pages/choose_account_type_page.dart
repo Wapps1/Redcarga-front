@@ -46,7 +46,7 @@ class ChooseAccountTypePage extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
-                      color: RcColors.rcColor6,
+                      color: rcColor6,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -95,11 +95,11 @@ class AccountTypeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 12,
-      shadowColor: RcColors.rcColor5.withOpacity(0.25),
+      shadowColor: rcColor5.withOpacity(0.25),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(28),
       ),
-      color: RcColors.white.withOpacity(0.98),
+      color: rcWhite.withOpacity(0.98),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(28),
@@ -134,7 +134,7 @@ class AccountTypeCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: RcColors.rcColor6,
+                        color: rcColor6,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -142,7 +142,7 @@ class AccountTypeCard extends StatelessWidget {
                       description,
                       style: TextStyle(
                         fontSize: 14,
-                        color: RcColors.rcColor6.withOpacity(0.7),
+                        color: rcColor6.withOpacity(0.7),
                       ),
                     ),
                   ],
@@ -155,4 +155,5 @@ class AccountTypeCard extends StatelessWidget {
     );
   }
 }
+
 

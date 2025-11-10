@@ -41,21 +41,29 @@ class _AuthFlowExampleState extends State<AuthFlowExample> {
         return SignInPage(
           onBack: () => _navigateTo('welcome'),
           onRegisterClick: () => _navigateTo('choose_account'),
-          onSignIn: () {
-            // TODO: Implementar lógica de autenticación
+          onSignInSuccess: () {
+            // TODO: Navegar a la pantalla principal después del login exitoso
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Iniciar sesión (lógica pendiente)')),
+              const SnackBar(
+                content: Text('Login exitoso - Navegar a Home'),
+                backgroundColor: Colors.green,
+              ),
             );
+            // _navigateTo('home'); // Cuando tengas la pantalla principal
           },
         );
       case 'sign_up_client':
         return SignUpClientPage(
           onBack: () => _navigateTo('choose_account'),
           onComplete: () {
-            // TODO: Implementar lógica de registro
+            // TODO: Navegar a la pantalla principal después del registro exitoso
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Registro completado (lógica pendiente)')),
+              const SnackBar(
+                content: Text('Registro de cliente completado'),
+                backgroundColor: Colors.green,
+              ),
             );
+            // _navigateTo('home'); // Cuando tengas la pantalla principal
             _navigateTo('welcome');
           },
         );
@@ -63,10 +71,14 @@ class _AuthFlowExampleState extends State<AuthFlowExample> {
         return SignUpProviderPage(
           onBack: () => _navigateTo('choose_account'),
           onComplete: () {
-            // TODO: Implementar lógica de registro
+            // TODO: Navegar a la pantalla principal después del registro exitoso
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Registro completado (lógica pendiente)')),
+              const SnackBar(
+                content: Text('Registro de proveedor completado'),
+                backgroundColor: Colors.green,
+              ),
             );
+            // _navigateTo('home'); // Cuando tengas la pantalla principal
             _navigateTo('welcome');
           },
         );
@@ -78,4 +90,3 @@ class _AuthFlowExampleState extends State<AuthFlowExample> {
     }
   }
 }
-

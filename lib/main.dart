@@ -3,7 +3,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'features/auth/presentation/pages/auth_flow_example.dart';
 import 'core/theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // NOTA: No necesitamos inicializar Firebase.initializeApp() porque
+  // usamos la API REST de Firebase directamente (igual que en Android)
+  // No se requiere google-services.json
+  
   runApp(const MainApp());
 }
 
@@ -12,10 +18,14 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final materialTheme = MaterialTheme(redcargaTextTheme());
+    
     return MaterialApp(
       title: 'Red Carga',
-      theme: RedcargaTheme.lightTheme,
-      localizationsDelegates: [
+      theme: materialTheme.light(),
+      darkTheme: materialTheme.dark(),
+      themeMode: ThemeMode.system,
+      localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

@@ -24,10 +24,10 @@ class RcButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: (enabled && !isLoading) ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: RcColors.white,
-          foregroundColor: RcColors.rcColor6,
-          disabledBackgroundColor: RcColors.white.withOpacity(0.5),
-          disabledForegroundColor: RcColors.rcColor6.withOpacity(0.5),
+          backgroundColor: rcWhite,
+          foregroundColor: rcColor6,
+          disabledBackgroundColor:rcWhite.withOpacity(0.5),
+          disabledForegroundColor: rcColor6.withOpacity(0.5),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
@@ -39,7 +39,7 @@ class RcButton extends StatelessWidget {
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(RcColors.rcColor6),
+                  valueColor: AlwaysStoppedAnimation<Color>(rcColor6),
                 ),
               )
             : Text(
@@ -77,11 +77,11 @@ class RcOutlinedButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: (enabled && !isLoading) ? onPressed : null,
         style: OutlinedButton.styleFrom(
-          backgroundColor: RcColors.white.withOpacity(0.15),
-          foregroundColor: RcColors.white.withOpacity(0.90),
-          disabledBackgroundColor: RcColors.white.withOpacity(0.05),
-          disabledForegroundColor: RcColors.white.withOpacity(0.4),
-          side: const BorderSide(color: RcColors.white, width: 2),
+          backgroundColor: rcWhite.withOpacity(0.15),
+          foregroundColor: rcWhite.withOpacity(0.90),
+          disabledBackgroundColor: rcWhite.withOpacity(0.05),
+          disabledForegroundColor: rcWhite.withOpacity(0.4),
+          side: const BorderSide(color: rcWhite, width: 2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
@@ -92,7 +92,7 @@ class RcOutlinedButton extends StatelessWidget {
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(RcColors.white),
+                  valueColor: AlwaysStoppedAnimation<Color>(rcWhite),
                 ),
               )
             : Text(
@@ -106,4 +106,5 @@ class RcOutlinedButton extends StatelessWidget {
     );
   }
 }
+
 

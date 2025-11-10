@@ -78,29 +78,29 @@ class _RcDatePickerFieldState extends State<RcDatePickerField> {
       decoration: InputDecoration(
         labelText: widget.label,
         prefixIcon: widget.leadingIcon != null
-            ? Icon(widget.leadingIcon, color: RcColors.rcColor6)
+            ? Icon(widget.leadingIcon, color: rcColor6)
             : null,
-        suffixIcon: const Icon(Icons.calendar_today, color: RcColors.rcColor6),
+        suffixIcon: const Icon(Icons.calendar_today, color: rcColor6),
         filled: true,
-        fillColor: RcColors.white.withOpacity(0.9),
+        fillColor: rcWhite.withOpacity(0.9),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),

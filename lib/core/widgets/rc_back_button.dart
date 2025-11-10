@@ -15,9 +15,10 @@ class RcBackButton extends StatelessWidget {
     return IconButton(
       onPressed: onPressed,
       icon: const Icon(Icons.arrow_back),
-      color: RcColors.rcColor6,
+      color: rcColor6,
       iconSize: 24,
     );
   }
 }
+
 

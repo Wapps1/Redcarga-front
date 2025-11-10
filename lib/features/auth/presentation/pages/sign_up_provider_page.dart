@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/widgets/rc_background.dart';
 import '../../../../core/widgets/rc_back_button.dart';
 import '../../../../core/widgets/rc_button.dart';
@@ -8,9 +9,13 @@ import '../../../../core/widgets/rc_step_indicator.dart';
 import '../../../../core/widgets/rc_dropdown.dart';
 import '../../../../core/widgets/rc_date_picker_field.dart';
 import '../../../../core/theme.dart';
+import '../blocs/sign_up_provider/sign_up_provider_bloc.dart';
+import '../blocs/sign_up_provider/sign_up_provider_event.dart';
+import '../blocs/sign_up_provider/sign_up_provider_state.dart';
+import '../../data/di/auth_repositories.dart';
 
 /// Pantalla de registro de proveedor (4 pasos)
-class SignUpProviderPage extends StatefulWidget {
+class SignUpProviderPage extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback? onComplete;
 
@@ -21,181 +26,116 @@ class SignUpProviderPage extends StatefulWidget {
   });
 
   @override
-  State<SignUpProviderPage> createState() => _SignUpProviderPageState();
-}
-
-class _SignUpProviderPageState extends State<SignUpProviderPage> {
-  int _currentStep = 1;
-
-  // Paso 1: Credenciales
-  String _email = '';
-  String _username = '';
-  String _password = '';
-  String _confirmPassword = '';
-
-  // Paso 2: Verificación Email
-  String _verificationLink = '';
-  bool _emailVerified = false;
-
-  // Paso 3: Datos Personales
-  String _fullName = '';
-  String _phone = '';
-  String _birthDate = '';
-  String _documentType = '';
-  String _documentNumber = '';
-  String _ruc = '';
-
-  // Paso 4: Datos de la Empresa
-  String _legalName = '';
-  String _commercialName = '';
-  String _companyRuc = '';
-  String _companyEmail = '';
-  String _companyPhone = '';
-  String _address = '';
-
-  final List<String> _documentTypes = ['DNI', 'Pasaporte', 'Carnet de Extranjería', 'RUC'];
-
-  void _handleBack() {
-    if (_currentStep == 1) {
-      widget.onBack();
-    } else {
-      setState(() {
-        _currentStep--;
-      });
-    }
-  }
-
-  void _handleNext() {
-    // Si estamos en el paso 2 y el email no está verificado, primero verificarlo
-    if (_currentStep == 2 && !_emailVerified) {
-      setState(() {
-        _emailVerified = true;
-      });
-      return;
-    }
-    
-    // Avanzar al siguiente paso o completar
-    if (_currentStep < 4) {
-      setState(() {
-        _currentStep++;
-      });
-    } else {
-      widget.onComplete?.call();
-    }
-  }
-
-  bool _canProceed() {
-    switch (_currentStep) {
-      case 1:
-        return _email.isNotEmpty &&
-            _username.isNotEmpty &&
-            _password.length >= 8 &&
-            _password == _confirmPassword &&
-            _isValidEmail(_email);
-      case 2:
-        return true;
-      case 3:
-        return _fullName.isNotEmpty &&
-            _phone.length == 9 &&
-            _birthDate.length == 10 &&
-            _documentType.isNotEmpty &&
-            _documentNumber.isNotEmpty &&
-            _ruc.isNotEmpty;
-      case 4:
-        return _legalName.isNotEmpty &&
-            _commercialName.isNotEmpty &&
-            _companyRuc.length == 11 &&
-            _companyEmail.isNotEmpty &&
-            _companyPhone.length == 9 &&
-            _address.isNotEmpty &&
-            _isValidEmail(_companyEmail);
-      default:
-        return false;
-    }
-  }
-
-  bool _isValidEmail(String email) {
-    if (email.isEmpty) return false;
-    // Expresión regular más robusta para validar emails
-    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          const RcBackground(),
-          SafeArea(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: (_currentStep == 3 || _currentStep == 4) ? 24 : 48,
+    return BlocProvider(
+      create: (context) => SignUpProviderBloc(
+        authRemoteRepository: AuthRepositories.createAuthRemoteRepository(),
+        firebaseAuthRepository:
+            AuthRepositories.createFirebaseAuthRepository(),
+        identityRemoteRepository:
+            AuthRepositories.createIdentityRemoteRepository(),
+        providerRemoteRepository:
+            AuthRepositories.createProviderRemoteRepository(),
+      ),
+      child: BlocConsumer<SignUpProviderBloc, SignUpProviderState>(
+        listener: (context, state) {
+          if (state.isSuccess) {
+            onComplete?.call();
+          }
+          if (state.error != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.error!),
+                backgroundColor: Colors.red,
               ),
-              child: Column(
-                children: [
-                  // Header
-                  SizedBox(
-                    height: 48,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: RcBackButton(onPressed: _handleBack),
+            );
+          }
+        },
+        builder: (context, state) {
+          return Scaffold(
+            body: Stack(
+              children: [
+                const RcBackground(),
+                SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: (state.step == 3 || state.step == 4) ? 24 : 48,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Step Indicator
-                  RcStepIndicator(
-                    currentStep: _currentStep,
-                    totalSteps: 4,
-                  ),
-                  const SizedBox(height: 24),
-                  // Contenido scrolleable
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Column(
-                        children: [
-                          // Icono solo en pasos 1 y 2
-                          if (_currentStep != 3 && _currentStep != 4) ...[
-                            SvgPicture.asset(
-                              'assets/icons/truck_icon.svg',
-                              width: 100,
-                              height: 100,
+                    child: Column(
+                      children: [
+                        // Header
+                        SizedBox(
+                          height: 48,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: RcBackButton(
+                              onPressed: state.step == 1
+                                  ? onBack
+                                  : () {
+                                      context
+                                          .read<SignUpProviderBloc>()
+                                          .add(const SignUpProviderBack());
+                                    },
                             ),
-                            const SizedBox(height: 24),
-                          ],
-                          // Contenido del paso
-                          _buildStepContent(),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Step Indicator
+                        RcStepIndicator(
+                          currentStep: state.step,
+                          totalSteps: 4,
+                        ),
+                        const SizedBox(height: 24),
+                        // Contenido scrolleable
+                        Expanded(
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              children: [
+                                // Icono solo en pasos 1 y 2
+                                if (state.step != 3 && state.step != 4) ...[
+                                  const Icon(
+                                    Icons.local_shipping,
+                                    size: 100,
+                                    color: rcColor5,
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                                // Contenido del paso
+                                _buildStepContent(context, state),
+                                const SizedBox(height: 16),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Botón
+                        RcButton(
+                          text: _getButtonText(state),
+                          onPressed: _canProceed(state)
+                              ? () => _handleNext(context, state)
+                              : null,
+                          enabled: _canProceed(state),
+                          isLoading: state.isLoading,
+                        ),
+                      ],
                     ),
                   ),
-                  // Botón
-                  RcButton(
-                    text: _getButtonText(),
-                    onPressed: _canProceed() ? () {
-                      if (_canProceed()) {
-                        _handleNext();
-                      }
-                    } : null,
-                    enabled: _canProceed(),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  String _getButtonText() {
-    switch (_currentStep) {
+  String _getButtonText(SignUpProviderState state) {
+    switch (state.step) {
       case 1:
         return 'Registrar';
       case 2:
-        return _emailVerified ? 'Continuar' : 'Verificar Email';
+        return state.emailVerified ? 'Continuar' : 'Verificar Email';
       case 3:
         return 'Siguiente';
       case 4:
@@ -205,22 +145,88 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
     }
   }
 
-  Widget _buildStepContent() {
-    switch (_currentStep) {
+  bool _canProceed(SignUpProviderState state) {
+    switch (state.step) {
       case 1:
-        return _buildStep1Credentials();
+        return state.email.isNotEmpty &&
+            state.username.isNotEmpty &&
+            state.password.length >= 8 &&
+            state.password == state.confirmPassword &&
+            _isValidEmail(state.email) &&
+            !state.isLoading;
       case 2:
-        return _buildStep2EmailVerification();
+        return !state.isLoading;
       case 3:
-        return _buildStep3PersonalData();
+        return state.fullName.isNotEmpty &&
+            state.phone.length == 9 &&
+            state.birthDate.length == 10 &&
+            state.documentType.isNotEmpty &&
+            state.documentNumber.isNotEmpty &&
+            state.ruc.isNotEmpty &&
+            !state.isLoading;
       case 4:
-        return _buildStep4CompanyData();
+        return state.legalName.isNotEmpty &&
+            state.commercialName.isNotEmpty &&
+            state.companyRuc.length == 11 &&
+            state.companyEmail.isNotEmpty &&
+            state.companyPhone.length == 9 &&
+            state.address.isNotEmpty &&
+            _isValidEmail(state.companyEmail) &&
+            !state.isLoading;
+      default:
+        return false;
+    }
+  }
+
+  bool _isValidEmail(String email) {
+    if (email.isEmpty) return false;
+    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        .hasMatch(email);
+  }
+
+  void _handleNext(BuildContext context, SignUpProviderState state) {
+    final bloc = context.read<SignUpProviderBloc>();
+    switch (state.step) {
+      case 1:
+        bloc.add(const SignUpProviderRegisterStart());
+        break;
+      case 2:
+        if (!state.emailVerified) {
+          bloc.add(const SignUpProviderEmailVerified());
+        }
+        break;
+      case 3:
+        bloc.add(const SignUpProviderVerifyPerson());
+        break;
+      case 4:
+        bloc.add(const SignUpProviderRegisterCompanyAndLogin());
+        break;
+    }
+  }
+
+  Widget _buildStepContent(
+    BuildContext context,
+    SignUpProviderState state,
+  ) {
+    switch (state.step) {
+      case 1:
+        return _buildStep1Credentials(context, state);
+      case 2:
+        return _buildStep2EmailVerification(context, state);
+      case 3:
+        return _buildStep3PersonalData(context, state);
+      case 4:
+        return _buildStep4CompanyData(context, state);
       default:
         return const SizedBox();
     }
   }
 
-  Widget _buildStep1Credentials() {
+  Widget _buildStep1Credentials(
+    BuildContext context,
+    SignUpProviderState state,
+  ) {
+    final bloc = context.read<SignUpProviderBloc>();
     return Column(
       children: [
         const Text(
@@ -228,7 +234,7 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: RcColors.rcColor6,
+            color: rcColor6,
           ),
           textAlign: TextAlign.center,
         ),
@@ -237,30 +243,33 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           'Ingresa tu correo y contraseña',
           style: TextStyle(
             fontSize: 16,
-            color: RcColors.rcColor6.withOpacity(0.7),
+            color: rcColor6.withOpacity(0.7),
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
         RcTextField(
-          value: _email,
-          onChanged: (value) => setState(() => _email = value),
+          value: state.email,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderEmailChanged(value)),
           label: 'Correo Electrónico',
           leadingIcon: Icons.email,
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 16),
         RcTextField(
-          value: _username,
-          onChanged: (value) => setState(() => _username = value),
+          value: state.username,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderUsernameChanged(value)),
           label: 'Nombre de Usuario',
           leadingIcon: Icons.person,
           keyboardType: TextInputType.text,
         ),
         const SizedBox(height: 16),
         RcTextField(
-          value: _password,
-          onChanged: (value) => setState(() => _password = value),
+          value: state.password,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderPasswordChanged(value)),
           label: 'Contraseña',
           leadingIcon: Icons.lock,
           isPassword: true,
@@ -268,14 +277,17 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
         ),
         const SizedBox(height: 16),
         RcTextField(
-          value: _confirmPassword,
-          onChanged: (value) => setState(() => _confirmPassword = value),
+          value: state.confirmPassword,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderConfirmPasswordChanged(value)),
           label: 'Confirmar Contraseña',
           leadingIcon: Icons.lock,
           isPassword: true,
           keyboardType: TextInputType.visiblePassword,
-          isError: _confirmPassword.isNotEmpty && _password != _confirmPassword,
-          errorMessage: (_confirmPassword.isNotEmpty && _password != _confirmPassword)
+          isError: state.confirmPassword.isNotEmpty &&
+              state.password != state.confirmPassword,
+          errorMessage: (state.confirmPassword.isNotEmpty &&
+                  state.password != state.confirmPassword)
               ? 'Las contraseñas no coinciden'
               : null,
         ),
@@ -283,7 +295,10 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
     );
   }
 
-  Widget _buildStep2EmailVerification() {
+  Widget _buildStep2EmailVerification(
+    BuildContext context,
+    SignUpProviderState state,
+  ) {
     return Column(
       children: [
         const Text(
@@ -291,7 +306,7 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: RcColors.rcColor6,
+            color: rcColor6,
           ),
           textAlign: TextAlign.center,
         ),
@@ -300,35 +315,63 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           'Te enviamos un enlace de verificación a tu email. Ábrelo para continuar.',
           style: TextStyle(
             fontSize: 16,
-            color: RcColors.rcColor6.withOpacity(0.7),
+            color: rcColor6.withOpacity(0.7),
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
         Text(
-          _email,
+          state.email,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.bold,
-            color: RcColors.rcColor5,
+            color: rcColor5,
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
-        if (_emailVerified)
+        if (state.emailVerified)
           const Text(
             '¡Email verificado exitosamente!',
             style: TextStyle(
               fontSize: 16,
-              color: RcColors.black,
+              color: rcColor5,
             ),
             textAlign: TextAlign.center,
+          )
+        else
+          TextButton(
+            onPressed: () async {
+              final link = state.verificationLink
+                  .replaceAll('http://localhost:8080', 'http://10.0.2.2:8080')
+                  .replaceAll('https://localhost:8080', 'http://10.0.2.2:8080');
+              if (link.isNotEmpty) {
+                final uri = Uri.parse(link);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                }
+              }
+            },
+            child: const Text(
+              'Verificar Email',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: rcColor5,
+              ),
+            ),
           ),
       ],
     );
   }
 
-  Widget _buildStep3PersonalData() {
+  Widget _buildStep3PersonalData(
+    BuildContext context,
+    SignUpProviderState state,
+  ) {
+    final bloc = context.read<SignUpProviderBloc>();
+    final documentTypes = ['DNI', 'Pasaporte', 'Carnet de Extranjería', 'RUC'];
+
     return Column(
       children: [
         const Text(
@@ -336,7 +379,7 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: RcColors.rcColor6,
+            color: rcColor6,
           ),
           textAlign: TextAlign.center,
         ),
@@ -345,24 +388,25 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           'Ingresa tus datos personales',
           style: TextStyle(
             fontSize: 14,
-            color: RcColors.rcColor6.withOpacity(0.7),
+            color: rcColor6.withOpacity(0.7),
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
         RcTextField(
-          value: _fullName,
-          onChanged: (value) => setState(() => _fullName = value),
+          value: state.fullName,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderFullNameChanged(value)),
           label: 'Nombre Completo',
           leadingIcon: Icons.person,
           keyboardType: TextInputType.text,
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _phone,
+          value: state.phone,
           onChanged: (value) {
             if (value.length <= 9 && RegExp(r'^\d+$').hasMatch(value)) {
-              setState(() => _phone = value);
+              bloc.add(SignUpProviderPhoneChanged(value));
             }
           },
           label: 'Teléfono',
@@ -371,31 +415,33 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
         ),
         const SizedBox(height: 18),
         RcDatePickerField(
-          value: _birthDate,
-          onChanged: (value) => setState(() => _birthDate = value),
+          value: state.birthDate,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderBirthDateChanged(value)),
           label: 'Fecha de Nacimiento',
           leadingIcon: Icons.calendar_today,
         ),
         const SizedBox(height: 18),
         RcDropdown(
-          value: _documentType,
-          onChanged: (value) => setState(() => _documentType = value),
+          value: state.documentType,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderDocumentTypeChanged(value)),
           label: 'Tipo de Documento',
-          options: _documentTypes,
+          options: documentTypes,
           leadingIcon: Icons.badge,
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _documentNumber,
+          value: state.documentNumber,
           onChanged: (value) {
             int maxLength = 20;
-            if (_documentType == _documentTypes[0]) {
+            if (state.documentType == documentTypes[0]) {
               maxLength = 8; // DNI
-            } else if (_documentType == _documentTypes[3]) {
+            } else if (state.documentType == documentTypes[3]) {
               maxLength = 11; // RUC
             }
             if (value.length <= maxLength) {
-              setState(() => _documentNumber = value);
+              bloc.add(SignUpProviderDocumentNumberChanged(value));
             }
           },
           label: 'Número de Documento',
@@ -403,10 +449,10 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _ruc,
+          value: state.ruc,
           onChanged: (value) {
             if (value.length <= 11 && RegExp(r'^\d+$').hasMatch(value)) {
-              setState(() => _ruc = value);
+              bloc.add(SignUpProviderRucChanged(value));
             }
           },
           label: 'RUC Personal',
@@ -416,7 +462,11 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
     );
   }
 
-  Widget _buildStep4CompanyData() {
+  Widget _buildStep4CompanyData(
+    BuildContext context,
+    SignUpProviderState state,
+  ) {
+    final bloc = context.read<SignUpProviderBloc>();
     return Column(
       children: [
         const Text(
@@ -424,7 +474,7 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: RcColors.rcColor6,
+            color: rcColor6,
           ),
           textAlign: TextAlign.center,
         ),
@@ -433,32 +483,34 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
           'Información de tu compañía',
           style: TextStyle(
             fontSize: 14,
-            color: RcColors.rcColor6.withOpacity(0.7),
+            color: rcColor6.withOpacity(0.7),
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
         RcTextField(
-          value: _legalName,
-          onChanged: (value) => setState(() => _legalName = value),
+          value: state.legalName,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderLegalNameChanged(value)),
           label: 'Nombre Legal',
           leadingIcon: Icons.business,
           keyboardType: TextInputType.text,
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _commercialName,
-          onChanged: (value) => setState(() => _commercialName = value),
+          value: state.commercialName,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderCommercialNameChanged(value)),
           label: 'Nombre Comercial',
           leadingIcon: Icons.business,
           keyboardType: TextInputType.text,
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _companyRuc,
+          value: state.companyRuc,
           onChanged: (value) {
             if (value.length <= 11 && RegExp(r'^\d+$').hasMatch(value)) {
-              setState(() => _companyRuc = value);
+              bloc.add(SignUpProviderCompanyRucChanged(value));
             }
           },
           label: 'RUC',
@@ -467,18 +519,19 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _companyEmail,
-          onChanged: (value) => setState(() => _companyEmail = value),
+          value: state.companyEmail,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderCompanyEmailChanged(value)),
           label: 'Email de la Empresa',
           leadingIcon: Icons.email,
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _companyPhone,
+          value: state.companyPhone,
           onChanged: (value) {
             if (value.length <= 9 && RegExp(r'^\d+$').hasMatch(value)) {
-              setState(() => _companyPhone = value);
+              bloc.add(SignUpProviderCompanyPhoneChanged(value));
             }
           },
           label: 'Teléfono de la Empresa',
@@ -487,8 +540,9 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
         ),
         const SizedBox(height: 18),
         RcTextField(
-          value: _address,
-          onChanged: (value) => setState(() => _address = value),
+          value: state.address,
+          onChanged: (value) =>
+              bloc.add(SignUpProviderAddressChanged(value)),
           label: 'Dirección',
           leadingIcon: Icons.home,
           keyboardType: TextInputType.streetAddress,
@@ -498,4 +552,3 @@ class _SignUpProviderPageState extends State<SignUpProviderPage> {
     );
   }
 }
-

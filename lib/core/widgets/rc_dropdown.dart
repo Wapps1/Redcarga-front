@@ -25,28 +25,28 @@ class RcDropdown extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: leadingIcon != null
-            ? Icon(leadingIcon, color: RcColors.rcColor6)
+            ? Icon(leadingIcon, color: rcColor6)
             : null,
         filled: true,
-        fillColor: RcColors.white.withOpacity(0.9),
+        fillColor: rcWhite.withOpacity(0.9),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: RcColors.rcColor2.withOpacity(0.3),
+            color: rcColor2.withOpacity(0.3),
             width: 2,
           ),
         ),
@@ -65,4 +65,5 @@ class RcDropdown extends StatelessWidget {
     );
   }
 }
+
 

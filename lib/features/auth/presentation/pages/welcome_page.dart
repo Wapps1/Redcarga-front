@@ -20,8 +20,6 @@ class WelcomePage extends StatelessWidget {
       body: Stack(
         children: [
           const RcBackground(),
-
-          // Contenido realmente centrado
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -45,7 +43,7 @@ class WelcomePage extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
-                            color: RcColors.rcColor6,
+                            color: rcColor6,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -55,7 +53,7 @@ class WelcomePage extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,
-                            color: RcColors.rcColor5,
+                            color: rcColor5,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -77,12 +75,12 @@ class WelcomePage extends StatelessWidget {
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               side: BorderSide(
-                                color: RcColors.rcColor7.withOpacity(1),
+                                color: rcColor7.withOpacity(1),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(24),
                               ),
-                              foregroundColor: RcColors.rcColor6,
+                              foregroundColor: rcColor6,
                             ),
                             child: const Text('Iniciar Sesión'),
                           ),

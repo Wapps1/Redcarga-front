@@ -51,13 +51,13 @@ class _RcTextFieldState extends State<RcTextField> {
           decoration: InputDecoration(
             labelText: widget.label,
             prefixIcon: widget.leadingIcon != null
-                ? Icon(widget.leadingIcon, color: RcColors.rcColor6)
+                ? Icon(widget.leadingIcon, color: rcColor6)
                 : null,
             suffixIcon: widget.isPassword
                 ? IconButton(
                     icon: Icon(
                       _obscureText ? Icons.visibility_off : Icons.visibility,
-                      color: RcColors.rcColor6,
+                      color: rcColor6,
                     ),
                     onPressed: () {
                       setState(() {
@@ -67,13 +67,13 @@ class _RcTextFieldState extends State<RcTextField> {
                   )
                 : null,
             filled: true,
-            fillColor: RcColors.white.withOpacity(0.9),
+            fillColor: rcWhite.withOpacity(0.9),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
                 color: widget.isError
                     ? Colors.red
-                    : RcColors.rcColor2.withOpacity(0.3),
+                    : rcColor2.withOpacity(0.3),
                 width: 2,
               ),
             ),
@@ -82,7 +82,7 @@ class _RcTextFieldState extends State<RcTextField> {
               borderSide: BorderSide(
                 color: widget.isError
                     ? Colors.red
-                    : RcColors.rcColor2.withOpacity(0.3),
+                    : rcColor2.withOpacity(0.3),
                 width: 2,
               ),
             ),
@@ -91,7 +91,7 @@ class _RcTextFieldState extends State<RcTextField> {
               borderSide: BorderSide(
                 color: widget.isError
                     ? Colors.red
-                    : RcColors.rcColor2.withOpacity(0.3),
+                    : rcColor2.withOpacity(0.3),
                 width: 2,
               ),
             ),
@@ -105,7 +105,7 @@ class _RcTextFieldState extends State<RcTextField> {
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
-                color: RcColors.rcColor2.withOpacity(0.3),
+                color: rcColor2.withOpacity(0.3),
                 width: 2,
               ),
             ),
@@ -126,4 +126,5 @@ class _RcTextFieldState extends State<RcTextField> {
     );
   }
 }
+
 

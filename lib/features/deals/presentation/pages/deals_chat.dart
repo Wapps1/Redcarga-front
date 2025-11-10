@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_edit_cotizacion.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/counteroffer_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/counteroffer_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/cancel_deal_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/cancel_deal_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/payment_made_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/payment_made_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/package_received_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/package_received_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/rating_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/accept_deal_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/assign_fleet_driver_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/accept_deal_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_chat_card.dart';
 
 class ChatPage extends StatefulWidget {
   final String nombre;
@@ -18,17 +33,47 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
+// Estados para acciones del chat
+enum ChatAction {
+  none,
+  counteroffer, // contraoferta
+  quoteEdit, // edición de cotización
+  dealCancellation, // cancelar trato
+  paymentMade, // pago realizado
+  packageReceived, // paquete recibido
+  dealAcceptance, // aceptación de trato
+  shipmentSent, // carga enviada
+}
+
 class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isActionsExpanded = false;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  
+  // Cambiar este valor para forzar acceptedDeal a false (comentar/descomentar)
+  // final bool _actualAcceptedDeal = false;
+  late bool _actualAcceptedDeal;
+  
+  // Estados de acciones del chat
+  ChatAction _otherPersonAction = ChatAction.none; // Acción de la otra persona
+  double _counterofferPrice = 0.0; // Precio de la contraoferta
+  bool _isMyCounteroffer = false; // Si el usuario actual hizo la contraoferta
+  bool _isMyCancellation = false; // Si el usuario actual canceló el trato
+  bool _isMyPayment = false; // Si el usuario actual confirmó el pago
+  bool _isMyPackageReceived = false; // Si el usuario actual confirmó la recepción del paquete
+  bool _isMyDealAcceptance = false; // Si el usuario actual aceptó el trato
+  String? _assignedFleet; // Flota asignada (solo para proveedor)
+  String? _assignedDriver; // Conductor asignado (solo para proveedor)
+  bool _isMyShipmentSent = false; // Si el usuario actual envió la carga
 
   @override
   void initState() {
     super.initState();
+    _actualAcceptedDeal = widget.acceptedDeal;
+    
     _tabController = TabController(
-      length: widget.acceptedDeal ? 2 : 1,
+      length: _actualAcceptedDeal ? 2 : 1,
       vsync: this,
     );
     _tabController.addListener(() {
@@ -105,7 +150,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
               ),
 
               // Tabs (solo si acceptedDeal es true)
-              if (widget.acceptedDeal)
+              if (_actualAcceptedDeal)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -126,7 +171,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
 
               // Contenido de los tabs
               Expanded(
-                child: widget.acceptedDeal
+                child: _actualAcceptedDeal
                     ? TabBarView(
                         controller: _tabController,
                         children: [
@@ -226,6 +271,63 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                   true,
                   colorScheme,
                 ),
+                // Mostrar card de contraoferta si hay una acción de contraoferta
+                if (_otherPersonAction == ChatAction.counteroffer) ...[
+                  const SizedBox(height: 12),
+                  CounterofferChatCard(
+                    precio: _counterofferPrice,
+                    isMyCounteroffer: _isMyCounteroffer,
+                    onAceptar: () {
+                      setState(() {
+                        _otherPersonAction = ChatAction.none;
+                      });
+                      // TODO: Aceptar contraoferta
+                    },
+                    onRechazar: () {
+                      setState(() {
+                        _otherPersonAction = ChatAction.none;
+                      });
+                      // TODO: Rechazar contraoferta
+                    },
+                  ),
+                ],
+                // Mostrar card de cancelación de trato si hay una acción de cancelación
+                if (_otherPersonAction == ChatAction.dealCancellation) ...[
+                  const SizedBox(height: 12),
+                  CancelDealChatCard(
+                    isMyCancellation: _isMyCancellation,
+                  ),
+                ],
+                // Mostrar card de pago realizado si hay una acción de pago
+                if (_otherPersonAction == ChatAction.paymentMade) ...[
+                  const SizedBox(height: 12),
+                  PaymentMadeChatCard(
+                    isMyPayment: _isMyPayment,
+                  ),
+                ],
+                // Mostrar card de paquete recibido si hay una acción de recepción
+                if (_otherPersonAction == ChatAction.packageReceived) ...[
+                  const SizedBox(height: 12),
+                  PackageReceivedChatCard(
+                    isMyReceipt: _isMyPackageReceived,
+                  ),
+                ],
+                // Mostrar card de aceptación de trato si hay una acción de aceptación
+                if (_otherPersonAction == ChatAction.dealAcceptance) ...[
+                  const SizedBox(height: 12),
+                  AcceptDealChatCard(
+                    isMyAcceptance: _isMyDealAcceptance,
+                    fleet: _assignedFleet,
+                    driver: _assignedDriver,
+                  ),
+                ],
+                // Mostrar card de carga enviada si hay una acción de envío
+                if (_otherPersonAction == ChatAction.shipmentSent) ...[
+                  const SizedBox(height: 12),
+                  ShipmentSentChatCard(
+                    isMyShipment: _isMyShipmentSent,
+                  ),
+                ],
               ],
             ),
           ),
@@ -349,21 +451,147 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
   List<Widget> _buildActionButtons(bool isCustomer, ColorScheme colorScheme) {
     if (isCustomer) {
       return [
-        _buildActionButton('Ver Cotización actual', colorScheme.primary, colorScheme),
-        _buildActionButton('Editar carga actual', colorScheme.secondary, colorScheme),
-        _buildActionButton('Hacer contraoferta', colorScheme.primary, colorScheme),
-        _buildActionButton('Aceptar acuerdo', colorScheme.secondary, colorScheme),
-        _buildActionButton('Paquete recibido', colorScheme.secondary, colorScheme),
-        _buildActionButton('Cancelar trato', rcColor1, colorScheme, isOutlined: true),
+        _buildActionButton(
+          'Ver Cotización actual',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  acceptedDeal: widget.acceptedDeal,
+                  editingMode: false,
+                ),
+              ),
+            );
+          },
+        ),
+        _buildActionButton(
+          'Editar carga actual',
+          colorScheme.secondary,
+          colorScheme,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  acceptedDeal: widget.acceptedDeal,
+                  editingMode: true,
+                ),
+              ),
+            );
+          },
+        ),
+        _buildActionButton(
+          'Hacer contraoferta',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+          },
+        ),
+        _buildActionButton(
+          'Aceptar acuerdo',
+          colorScheme.secondary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalAceptarTrato();
+          },
+        ),
+        if (_actualAcceptedDeal) ...[
+          _buildActionButton(
+            'Paquete recibido',
+            colorScheme.secondary,
+            colorScheme,
+            onTap: () {
+              _mostrarModalPaqueteRecibido();
+            },
+          ),
+        ],
+        _buildActionButton(
+          'Cancelar trato',
+          rcColor1,
+          colorScheme,
+          isOutlined: true,
+          onTap: () {
+            _mostrarModalCancelarTrato();
+          },
+        ),
       ];
     } else {
       return [
-        _buildActionButton('Ver Cotización actual', colorScheme.primary, colorScheme),
-        _buildActionButton('Editar carga actual', colorScheme.secondary, colorScheme),
-        _buildActionButton('Hacer contraoferta', colorScheme.primary, colorScheme),
-        _buildActionButton('Aceptar acuerdo', colorScheme.secondary, colorScheme),
-        _buildActionButton('Pago realizado', colorScheme.secondary, colorScheme),
-        _buildActionButton('Cancelar trato', rcColor1, colorScheme, isOutlined: true),
+        _buildActionButton(
+          'Ver Cotización actual',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  acceptedDeal: _actualAcceptedDeal,
+                  editingMode: false,
+                ),
+              ),
+            );
+          },
+        ),
+        _buildActionButton(
+          'Editar carga actual',
+          colorScheme.secondary,
+          colorScheme,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  acceptedDeal: _actualAcceptedDeal,
+                  editingMode: true,
+                ),
+              ),
+            );
+          },
+        ),
+        _buildActionButton(
+          'Hacer contraoferta',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+          },
+        ),
+        _buildActionButton(
+          'Aceptar acuerdo',
+          colorScheme.secondary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalAceptarTrato();
+          },
+        ),
+        if (_actualAcceptedDeal) ...[
+          _buildActionButton(
+            'Pago realizado',
+            colorScheme.secondary,
+            colorScheme,
+            onTap: () {
+              _mostrarModalPagoRealizado();
+            },
+          ),
+          _buildActionButton(
+            'Carga enviada',
+            colorScheme.secondary,
+            colorScheme,
+            onTap: () {
+              _mostrarModalCargaEnviada();
+            },
+          ),
+        ],
+        _buildActionButton(
+          'Cancelar trato',
+          rcColor1,
+          colorScheme,
+          isOutlined: true,
+          onTap: () {
+            _mostrarModalCancelarTrato();
+          },
+        ),
       ];
     }
   }
@@ -373,6 +601,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
     Color backgroundColor,
     ColorScheme colorScheme, {
     bool isOutlined = false,
+    VoidCallback? onTap,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -395,7 +624,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: onTap ?? () {
             // TODO: Acción del botón
           },
           borderRadius: BorderRadius.circular(12),
@@ -526,10 +755,52 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
               _buildInfoSection(
                 'Acciones',
                 [
-                  _buildActionButton('Ver Cotización actual', colorScheme.primary, colorScheme),
-                  _buildActionButton('Editar carga actual', colorScheme.secondary, colorScheme),
-                  _buildActionButton('Hacer contraoferta', colorScheme.primary, colorScheme),
-                  _buildActionButton('Paquete recibido', colorScheme.secondary, colorScheme),
+                  _buildActionButton(
+                    'Ver Cotización actual',
+                    colorScheme.primary,
+                    colorScheme,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => EditCotizacionPage(
+                            acceptedDeal: widget.acceptedDeal,
+                            editingMode: false,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildActionButton(
+                    'Editar carga actual',
+                    colorScheme.secondary,
+                    colorScheme,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => EditCotizacionPage(
+                            acceptedDeal: widget.acceptedDeal,
+                            editingMode: true,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildActionButton(
+          'Hacer contraoferta',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+          },
+        ),
+                  _buildActionButton(
+                    'Paquete recibido',
+                    colorScheme.secondary,
+                    colorScheme,
+                    onTap: () {
+                      _mostrarModalPaqueteRecibido();
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -554,9 +825,44 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
               _buildInfoSection(
                 'Acciones',
                 [
-                  _buildActionButton('Ver Cotización actual', colorScheme.primary, colorScheme),
-                  _buildActionButton('Editar carga actual', colorScheme.secondary, colorScheme),
-                  _buildActionButton('Hacer contraoferta', colorScheme.primary, colorScheme),
+                  _buildActionButton(
+                    'Ver Cotización actual',
+                    colorScheme.primary,
+                    colorScheme,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => EditCotizacionPage(
+                            acceptedDeal: _actualAcceptedDeal,
+                            editingMode: false,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildActionButton(
+                    'Editar carga actual',
+                    colorScheme.secondary,
+                    colorScheme,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => EditCotizacionPage(
+                            acceptedDeal: _actualAcceptedDeal,
+                            editingMode: true,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildActionButton(
+          'Hacer contraoferta',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+          },
+        ),
                   _buildActionButton('Pago realizado', colorScheme.secondary, colorScheme),
                 ],
               ),
@@ -680,6 +986,194 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalContraoferta(double precioActual) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: CounterofferModal(
+          precioActual: precioActual,
+          onRealizarContraoferta: (nuevoPrecio) {
+            setState(() {
+              _otherPersonAction = ChatAction.counteroffer;
+              _counterofferPrice = nuevoPrecio;
+              _isMyCounteroffer = true;
+            });
+            // TODO: Enviar contraoferta al servidor
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalCancelarTrato() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: CancelDealModal(
+          onCancelarTrato: () {
+            setState(() {
+              _otherPersonAction = ChatAction.dealCancellation;
+              _isMyCancellation = true;
+            });
+            // TODO: Enviar cancelación al servidor
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalPagoRealizado() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: PaymentMadeModal(
+          onConfirmarPago: () {
+            setState(() {
+              _otherPersonAction = ChatAction.paymentMade;
+              _isMyPayment = true;
+            });
+            // TODO: Enviar confirmación de pago al servidor
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalPaqueteRecibido() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: PackageReceivedModal(
+          onConfirmarRecepcion: () {
+            setState(() {
+              _otherPersonAction = ChatAction.packageReceived;
+              _isMyPackageReceived = true;
+            });
+            // TODO: Enviar confirmación de recepción al servidor
+            
+            // Cerrar el modal de confirmación y mostrar el modal de calificación
+            Navigator.of(context).pop();
+            _mostrarModalCalificacion();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalCalificacion() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: RatingModal(
+          onCalificar: (rating, comment) {
+            // TODO: Enviar calificación al servidor
+            // La card de paquete recibido ya se mostró en el paso anterior
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalAceptarTrato() {
+    final isProvider = widget.userRole == UserRole.provider;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: AcceptDealModal(
+          onAceptarTrato: () {
+            if (isProvider) {
+              // Si es proveedor, mostrar modal de asignar flota y conductor
+              // Esperar a que se cierre el modal actual antes de mostrar el siguiente
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _mostrarModalAsignarFlotaConductor();
+                }
+              });
+            } else {
+              // Si es cliente, mostrar la card directamente
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _otherPersonAction = ChatAction.dealAcceptance;
+                    _isMyDealAcceptance = true;
+                  });
+                }
+              });
+              // TODO: Enviar aceptación de trato al servidor
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalAsignarFlotaConductor() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: AssignFleetDriverModal(
+          onAsignar: (fleet, driver) {
+            if (mounted) {
+              setState(() {
+                _otherPersonAction = ChatAction.dealAcceptance;
+                _isMyDealAcceptance = true;
+                _assignedFleet = fleet;
+                _assignedDriver = driver;
+              });
+            }
+            // TODO: Enviar aceptación de trato con flota y conductor al servidor
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalCargaEnviada() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: ShipmentSentModal(
+          onConfirmarEnvio: () {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _otherPersonAction = ChatAction.shipmentSent;
+                  _isMyShipmentSent = true;
+                });
+              }
+            });
+            // TODO: Enviar confirmación de envío de carga al servidor
+          },
         ),
       ),
     );

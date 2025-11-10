@@ -46,8 +46,8 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isCustomer =  widget.role == UserRole.customer;
-    //final isCustomer =  false;
+    //final isCustomer =  widget.role == UserRole.customer;
+    final isCustomer =  false;
     final pages = isCustomer ? _customerPages : _providerPages;
 
     return Scaffold(

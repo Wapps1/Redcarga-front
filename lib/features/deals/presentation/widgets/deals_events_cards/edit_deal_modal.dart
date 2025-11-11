@@ -3,13 +3,30 @@ import 'package:red_carga/core/theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:ui';
 
-class ShipmentSentModal extends StatelessWidget {
-  final VoidCallback onConfirmarEnvio;
+class EditDealModal extends StatefulWidget {
+  final bool acceptedDeal;
+  final Function(String motivo) onActualizarCotizacion;
+  final Function(String motivo) onEnviarSolicitud;
 
-  const ShipmentSentModal({
+  const EditDealModal({
     super.key,
-    required this.onConfirmarEnvio,
+    required this.acceptedDeal,
+    required this.onActualizarCotizacion,
+    required this.onEnviarSolicitud,
   });
+
+  @override
+  State<EditDealModal> createState() => _EditDealModalState();
+}
+
+class _EditDealModalState extends State<EditDealModal> {
+  final TextEditingController _motivoController = TextEditingController();
+
+  @override
+  void dispose() {
+    _motivoController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +56,7 @@ class ShipmentSentModal extends StatelessWidget {
               children: [
                 // Título
                 Text(
-                  'Carga Enviada',
+                  'Editar trato',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: rcColor6,
                         fontWeight: FontWeight.bold,
@@ -47,7 +64,7 @@ class ShipmentSentModal extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Ícono de carga enviada (SVG)
+                // Ícono de documento con lápiz
                 Container(
                   width: 80,
                   height: 80,
@@ -61,12 +78,12 @@ class ShipmentSentModal extends StatelessWidget {
                   ),
                   child: Center(
                     child: SvgPicture.asset(
-                      'lib/features/deals/assets_temp/en_envio.svg',
+                      'lib/features/deals/assets_temp/documento_editar.svg',
                       width: 50,
                       height: 50,
                       fit: BoxFit.contain,
                       placeholderBuilder: (context) => Icon(
-                        Icons.local_shipping,
+                        Icons.edit_document,
                         size: 50,
                         color: colorScheme.primary,
                       ),
@@ -75,17 +92,45 @@ class ShipmentSentModal extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Mensaje de confirmación
-                Text(
-                  '¿Confirmas que has enviado la carga?',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                // Campo de texto para el motivo
+                TextField(
+                  controller: _motivoController,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    hintText: 'Cuéntanos tu motivo',
+                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: rcColor8,
+                        ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.secondary.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.secondary.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: rcColor6,
                       ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
 
-                // Botón Confirmar envío
+                // Botón según el estado
                 SizedBox(
                   width: double.infinity,
                   child: Container(
@@ -104,15 +149,24 @@ class ShipmentSentModal extends StatelessWidget {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          Navigator.of(context).pop();
-                          onConfirmarEnvio();
+                          final motivo = _motivoController.text.trim();
+                          if (motivo.isNotEmpty) {
+                            // No cerrar aquí, dejar que el callback maneje el cierre
+                            if (widget.acceptedDeal) {
+                              widget.onEnviarSolicitud(motivo);
+                            } else {
+                              widget.onActualizarCotizacion(motivo);
+                            }
+                          }
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Center(
                             child: Text(
-                              'Confirmar envío',
+                              widget.acceptedDeal
+                                  ? 'Enviar solicitud de cotización'
+                                  : 'Actualizar cotización',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyLarge

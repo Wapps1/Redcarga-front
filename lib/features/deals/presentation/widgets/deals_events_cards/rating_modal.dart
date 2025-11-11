@@ -171,11 +171,11 @@ class _RatingModalState extends State<RatingModal> {
                       child: InkWell(
                         onTap: () {
                           if (_rating > 0) {
+                            Navigator.of(context).pop();
                             widget.onCalificar(
                               _rating,
                               _commentController.text.trim(),
                             );
-                            Navigator.of(context).pop();
                           }
                         },
                         borderRadius: BorderRadius.circular(12),
@@ -195,6 +195,30 @@ class _RatingModalState extends State<RatingModal> {
                           ),
                         ),
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Botón Cancelar
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: colorScheme.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: Text(
+                      'Cancelar',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                   ),
                 ),

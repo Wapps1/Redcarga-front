@@ -16,6 +16,7 @@ import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/accept_deal_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_chat_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_chat_card.dart';
 
 class ChatPage extends StatefulWidget {
   final String nombre;
@@ -45,7 +46,7 @@ enum ChatAction {
   shipmentSent, // carga enviada
 }
 
-class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin {
+class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   late TabController _tabController;
   bool _isActionsExpanded = false;
   final TextEditingController _messageController = TextEditingController();
@@ -66,11 +67,12 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
   String? _assignedFleet; // Flota asignada (solo para proveedor)
   String? _assignedDriver; // Conductor asignado (solo para proveedor)
   bool _isMyShipmentSent = false; // Si el usuario actual envió la carga
+  bool _isMyEdit = false; // Si el usuario actual editó el documento
 
   @override
   void initState() {
     super.initState();
-    _actualAcceptedDeal = widget.acceptedDeal;
+    _actualAcceptedDeal = !widget.acceptedDeal;
     
     _tabController = TabController(
       length: _actualAcceptedDeal ? 2 : 1,
@@ -328,6 +330,14 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                     isMyShipment: _isMyShipmentSent,
                   ),
                 ],
+                // Mostrar card de edición de documento si hay una acción de edición
+                if (_otherPersonAction == ChatAction.quoteEdit) ...[
+                  const SizedBox(height: 12),
+                  EditDealChatCard(
+                    acceptedDeal: _actualAcceptedDeal,
+                    isMyEdit: _isMyEdit,
+                  ),
+                ],
               ],
             ),
           ),
@@ -461,6 +471,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                 builder: (context) => EditCotizacionPage(
                   acceptedDeal: widget.acceptedDeal,
                   editingMode: false,
+                  isCustomer: isCustomer,
                 ),
               ),
             );
@@ -476,6 +487,14 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                 builder: (context) => EditCotizacionPage(
                   acceptedDeal: widget.acceptedDeal,
                   editingMode: true,
+                  isCustomer: isCustomer,
+                  onEdicionCompletada: (motivo) {
+                    setState(() {
+                      _otherPersonAction = ChatAction.quoteEdit;
+                      _isMyEdit = true;
+                    });
+                    // TODO: Enviar edición al servidor
+                  },
                 ),
               ),
             );
@@ -489,14 +508,15 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
             _mostrarModalContraoferta(1000.0); // Precio actual por defecto
           },
         ),
-        _buildActionButton(
-          'Aceptar acuerdo',
-          colorScheme.secondary,
-          colorScheme,
-          onTap: () {
-            _mostrarModalAceptarTrato();
-          },
-        ),
+        if (!_actualAcceptedDeal)
+          _buildActionButton(
+            'Aceptar acuerdo',
+            colorScheme.secondary,
+            colorScheme,
+            onTap: () {
+              _mostrarModalAceptarTrato();
+            },
+          ),
         if (_actualAcceptedDeal) ...[
           _buildActionButton(
             'Paquete recibido',
@@ -529,6 +549,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                 builder: (context) => EditCotizacionPage(
                   acceptedDeal: _actualAcceptedDeal,
                   editingMode: false,
+                  isCustomer: isCustomer,
                 ),
               ),
             );
@@ -544,6 +565,14 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                 builder: (context) => EditCotizacionPage(
                   acceptedDeal: _actualAcceptedDeal,
                   editingMode: true,
+                  isCustomer: isCustomer,
+                  onEdicionCompletada: (motivo) {
+                    setState(() {
+                      _otherPersonAction = ChatAction.quoteEdit;
+                      _isMyEdit = true;
+                    });
+                    // TODO: Enviar edición al servidor
+                  },
                 ),
               ),
             );
@@ -557,14 +586,15 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
             _mostrarModalContraoferta(1000.0); // Precio actual por defecto
           },
         ),
-        _buildActionButton(
-          'Aceptar acuerdo',
-          colorScheme.secondary,
-          colorScheme,
-          onTap: () {
-            _mostrarModalAceptarTrato();
-          },
-        ),
+        if (!_actualAcceptedDeal)
+          _buildActionButton(
+            'Aceptar acuerdo',
+            colorScheme.secondary,
+            colorScheme,
+            onTap: () {
+              _mostrarModalAceptarTrato();
+            },
+          ),
         if (_actualAcceptedDeal) ...[
           _buildActionButton(
             'Pago realizado',
@@ -763,8 +793,9 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => EditCotizacionPage(
-                            acceptedDeal: widget.acceptedDeal,
+                            acceptedDeal: _actualAcceptedDeal,
                             editingMode: false,
+                            isCustomer: isCustomer,
                           ),
                         ),
                       );
@@ -778,8 +809,9 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => EditCotizacionPage(
-                            acceptedDeal: widget.acceptedDeal,
+                            acceptedDeal: _actualAcceptedDeal,
                             editingMode: true,
+                            isCustomer: isCustomer,
                           ),
                         ),
                       );
@@ -835,6 +867,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                           builder: (context) => EditCotizacionPage(
                             acceptedDeal: _actualAcceptedDeal,
                             editingMode: false,
+                            isCustomer: isCustomer,
                           ),
                         ),
                       );
@@ -850,6 +883,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                           builder: (context) => EditCotizacionPage(
                             acceptedDeal: _actualAcceptedDeal,
                             editingMode: true,
+                            isCustomer: isCustomer,
                           ),
                         ),
                       );
@@ -1070,7 +1104,12 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
             
             // Cerrar el modal de confirmación y mostrar el modal de calificación
             Navigator.of(context).pop();
-            _mostrarModalCalificacion();
+            // Esperar a que el modal se cierre completamente antes de mostrar el siguiente
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _mostrarModalCalificacion();
+              }
+            });
           },
         ),
       ),
@@ -1118,8 +1157,18 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
                   setState(() {
+                    _actualAcceptedDeal = true; // Cambiar acceptedDeal a true
                     _otherPersonAction = ChatAction.dealAcceptance;
                     _isMyDealAcceptance = true;
+                    // Actualizar el TabController para mostrar las tabs
+                    _tabController.dispose();
+                    _tabController = TabController(
+                      length: 2,
+                      vsync: this,
+                    );
+                    _tabController.addListener(() {
+                      setState(() {});
+                    });
                   });
                 }
               });
@@ -1142,10 +1191,20 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
           onAsignar: (fleet, driver) {
             if (mounted) {
               setState(() {
+                _actualAcceptedDeal = true; // Cambiar acceptedDeal a true
                 _otherPersonAction = ChatAction.dealAcceptance;
                 _isMyDealAcceptance = true;
                 _assignedFleet = fleet;
                 _assignedDriver = driver;
+                // Actualizar el TabController para mostrar las tabs
+                _tabController.dispose();
+                _tabController = TabController(
+                  length: 2,
+                  vsync: this,
+                );
+                _tabController.addListener(() {
+                  setState(() {});
+                });
               });
             }
             // TODO: Enviar aceptación de trato con flota y conductor al servidor

@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/articulo_card.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_modal.dart';
 
 class EditCotizacionPage extends StatefulWidget {
   final bool acceptedDeal;
   final bool editingMode;
+  final bool isCustomer;
+  final Function(String motivo)? onEdicionCompletada;
 
   const EditCotizacionPage({
     super.key,
     this.acceptedDeal = false,
     this.editingMode = false,
+    this.isCustomer = false,
+    this.onEdicionCompletada,
   });
 
   @override
@@ -19,6 +24,7 @@ class EditCotizacionPage extends StatefulWidget {
 class _EditCotizacionPageState extends State<EditCotizacionPage> {
   late bool _acceptedDeal;
   late bool _editingMode;
+  late bool _isCustomer;
   
   // Información de la solicitud
   late String _cliente;
@@ -49,6 +55,7 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     super.initState();
     _acceptedDeal = widget.acceptedDeal;
     _editingMode = widget.editingMode;
+    _isCustomer = widget.isCustomer;
     
     // Inicializar datos de ejemplo
     _cliente = 'Juan Pérez';
@@ -113,6 +120,11 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
   }
 
   void _verificarCambios() {
+    // No verificar cambios si está en modo solo lectura
+    if (_isReadOnly) {
+      return;
+    }
+
     final originalArticulos = _valoresOriginales['articulos'] as List;
     
     // Verificar cambios en campos básicos
@@ -183,6 +195,11 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     );
   }
 
+  bool get _isReadOnly {
+    // Cuando es cliente y no está en modo edición y no hay deal aceptado, es solo lectura
+    return _isCustomer && !_editingMode && !_acceptedDeal;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = MaterialTheme.lightScheme();
@@ -250,12 +267,14 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                           children: [
                             Checkbox(
                               value: _pagoContraentrega,
-                              onChanged: (value) {
-                                setState(() {
-                                  _pagoContraentrega = value ?? false;
-                                  _verificarCambios();
-                                });
-                              },
+                              onChanged: _isReadOnly
+                                  ? null
+                                  : (value) {
+                                      setState(() {
+                                        _pagoContraentrega = value ?? false;
+                                        _verificarCambios();
+                                      });
+                                    },
                               activeColor: colorScheme.primary,
                             ),
                             Text(
@@ -291,24 +310,33 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                     const SizedBox(height: 16),
                     _buildInfoCard(
                       children: [
-                        TextField(
-                          controller: _comentarioController,
-                          onChanged: (value) {
-                            _comentario = value;
-                            _verificarCambios();
-                          },
-                          maxLines: 4,
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Escribe un comentario...',
-                            hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: rcColor8,
+                        _isReadOnly
+                            ? Text(
+                                _comentario.isEmpty
+                                    ? 'Sin comentario'
+                                    : _comentario,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: _comentario.isEmpty ? rcColor8 : rcColor6,
+                                    ),
+                              )
+                            : TextField(
+                                controller: _comentarioController,
+                                onChanged: (value) {
+                                  _comentario = value;
+                                  _verificarCambios();
+                                },
+                                maxLines: 4,
+                                decoration: InputDecoration(
+                                  border: InputBorder.none,
+                                  hintText: 'Escribe un comentario...',
+                                  hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: rcColor8,
+                                      ),
                                 ),
-                          ),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: rcColor6,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: rcColor6,
+                                    ),
                               ),
-                        ),
                       ],
                     ),
 
@@ -332,46 +360,54 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                                     color: rcColor8,
                                   ),
                             ),
-                            SizedBox(
-                              width: 120,
-                              child: TextField(
-                                controller: _precioController,
-                                onChanged: (value) {
-                                  _precioPropuesto = value;
-                                  _verificarCambios();
-                                },
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  prefixText: 's/',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: rcColor8.withOpacity(0.3),
+                            _isReadOnly
+                                ? Text(
+                                    's/${_precioPropuesto}',
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                          color: rcColor6,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  )
+                                : SizedBox(
+                                    width: 120,
+                                    child: TextField(
+                                      controller: _precioController,
+                                      onChanged: (value) {
+                                        _precioPropuesto = value;
+                                        _verificarCambios();
+                                      },
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        prefixText: 's/',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: rcColor8.withOpacity(0.3),
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: rcColor8.withOpacity(0.3),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: colorScheme.primary,
+                                          ),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                      ),
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: rcColor6,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                     ),
                                   ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: rcColor8.withOpacity(0.3),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: colorScheme.primary,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                ),
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: rcColor6,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ),
                           ],
                         ),
                       ],
@@ -379,39 +415,40 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
 
                     const SizedBox(height: 16),
 
-                    // Mensaje informativo sobre deslizar para eliminar
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: rcColor7,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: rcColor8.withOpacity(0.3),
-                          width: 1,
+                    // Mensaje informativo sobre deslizar para eliminar (solo si no es solo lectura)
+                    if (!_isReadOnly)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: rcColor7,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: rcColor8.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Desliza hacia la izquierda para eliminar artículos',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: rcColor6,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Desliza hacia la izquierda para eliminar artículos',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: rcColor6,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
 
-                    const SizedBox(height: 16),
+                    if (!_isReadOnly) const SizedBox(height: 16),
 
                     // Lista de artículos
                     ..._articulos.map((articulo) {
@@ -427,20 +464,24 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                         onVerFotos: () {
                           _mostrarFotosAmpliadas(articulo.fotos);
                         },
-                        onEliminar: () {
-                          setState(() {
-                            _articulos.removeWhere((a) => a.id == articulo.id);
-                            _verificarCambios();
-                          });
-                          _mostrarMensaje('Artículo eliminado');
-                        },
-                        onCantidadCambiada: (nuevaCantidad) {
-                          setState(() {
-                            articulo.cantidad = nuevaCantidad;
-                            _verificarCambios();
-                          });
-                          _mostrarMensaje('Cantidad actualizada');
-                        },
+                        onEliminar: _isReadOnly
+                            ? null
+                            : () {
+                                setState(() {
+                                  _articulos.removeWhere((a) => a.id == articulo.id);
+                                  _verificarCambios();
+                                });
+                                _mostrarMensaje('Artículo eliminado');
+                              },
+                        onCantidadCambiada: _isReadOnly
+                            ? null
+                            : (nuevaCantidad) {
+                                setState(() {
+                                  articulo.cantidad = nuevaCantidad;
+                                  _verificarCambios();
+                                });
+                                _mostrarMensaje('Cantidad actualizada');
+                              },
                       );
                     }),
 
@@ -600,12 +641,7 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () {
-                    // TODO: Actualizar cotización
-                    _mostrarMensaje('Cotización actualizada');
-                    setState(() {
-                      _editingMode = false;
-                      _guardarValoresOriginales();
-                    });
+                    _mostrarModalEditarTrato();
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
@@ -733,12 +769,7 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () {
-                    // TODO: Proponer cotización
-                    _mostrarMensaje('Cotización propuesta');
-                    setState(() {
-                      _editingMode = false;
-                      _guardarValoresOriginales();
-                    });
+                    _mostrarModalEditarTrato();
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
@@ -764,9 +795,76 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     return const SizedBox.shrink();
   }
 
+  void _mostrarModalEditarTrato() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: EditDealModal(
+          acceptedDeal: _acceptedDeal,
+          onActualizarCotizacion: (motivo) {
+            // Cerrar el modal primero
+            Navigator.of(dialogContext).pop();
+            // Guardar el callback para ejecutarlo después
+            final callback = widget.onEdicionCompletada;
+            // Luego ejecutar callbacks y cerrar la página
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                // Guardar valores antes de cerrar
+                setState(() {
+                  _editingMode = false;
+                  _guardarValoresOriginales();
+                });
+                // Mostrar mensaje antes de cerrar
+                _mostrarMensaje('Cotización actualizada');
+                // Cerrar la página de edición
+                Navigator.of(context).pop();
+                // Ejecutar el callback después de cerrar la página
+                if (callback != null) {
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    callback(motivo);
+                  });
+                }
+              }
+            });
+          },
+          onEnviarSolicitud: (motivo) {
+            // Cerrar el modal primero
+            Navigator.of(dialogContext).pop();
+            // Guardar el callback para ejecutarlo después
+            final callback = widget.onEdicionCompletada;
+            // Luego ejecutar callbacks y cerrar la página
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                // Guardar valores antes de cerrar
+                setState(() {
+                  _editingMode = false;
+                  _guardarValoresOriginales();
+                });
+                // Mostrar mensaje antes de cerrar
+                _mostrarMensaje('Solicitud de cotización enviada');
+                // Cerrar la página de edición
+                Navigator.of(context).pop();
+                // Ejecutar el callback después de cerrar la página
+                if (callback != null) {
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    callback(motivo);
+                  });
+                }
+              }
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   void _mostrarFotosAmpliadas(List<String> fotos) {
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         child: Stack(

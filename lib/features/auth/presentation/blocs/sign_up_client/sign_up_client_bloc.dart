@@ -10,6 +10,7 @@ import '../../../domain/models/session/app_login_request.dart';
 import '../../../domain/repositories/auth_remote_repository.dart';
 import '../../../domain/repositories/firebase_auth_repository.dart';
 import '../../../domain/repositories/identity_remote_repository.dart';
+import 'package:red_carga/core/session/auth_bloc.dart';
 import 'sign_up_client_event.dart';
 import 'sign_up_client_state.dart';
 import 'package:intl/intl.dart';
@@ -18,14 +19,17 @@ class SignUpClientBloc extends Bloc<SignUpClientEvent, SignUpClientState> {
   final AuthRemoteRepository _authRemoteRepository;
   final FirebaseAuthRepository _firebaseAuthRepository;
   final IdentityRemoteRepository _identityRemoteRepository;
+  final AuthBloc _authBloc;
 
   SignUpClientBloc({
     required AuthRemoteRepository authRemoteRepository,
     required FirebaseAuthRepository firebaseAuthRepository,
     required IdentityRemoteRepository identityRemoteRepository,
+    required AuthBloc authBloc,
   })  : _authRemoteRepository = authRemoteRepository,
         _firebaseAuthRepository = firebaseAuthRepository,
         _identityRemoteRepository = identityRemoteRepository,
+        _authBloc = authBloc,
         super(const SignUpClientState()) {
     on<SignUpClientEmailChanged>(_onEmailChanged);
     on<SignUpClientUsernameChanged>(_onUsernameChanged);
@@ -126,7 +130,7 @@ class SignUpClientBloc extends Bloc<SignUpClientEvent, SignUpClientState> {
           username: Username(state.username),
           password: Password(state.password),
           roleCode: RoleCode.client,
-          platform: Platform.android,
+          platform: Platform.web, // Cambiado a web como en el login
         ),
       );
 
@@ -188,9 +192,12 @@ class SignUpClientBloc extends Bloc<SignUpClientEvent, SignUpClientState> {
       );
 
       // Paso 4: App login
-      await _authRemoteRepository.login(
-        AppLoginRequest(platform: Platform.android, ip: '0.0.0.0'),
+      final appSession = await _authRemoteRepository.login(
+        AppLoginRequest(platform: Platform.web, ip: '192.168.1.1', ttlSeconds: 3600), // Cambiado a web y IP correcta como en el login
       );
+
+      // Guardar sesión en el AuthBloc global
+      _authBloc.add(AuthAppSessionSaved(appSession));
 
       emit(state.copyWith(isLoading: false, isSuccess: true));
     } catch (e) {

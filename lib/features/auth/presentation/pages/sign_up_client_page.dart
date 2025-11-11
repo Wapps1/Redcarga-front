@@ -13,6 +13,7 @@ import '../blocs/sign_up_client/sign_up_client_bloc.dart';
 import '../blocs/sign_up_client/sign_up_client_event.dart';
 import '../blocs/sign_up_client/sign_up_client_state.dart';
 import '../../data/di/auth_repositories.dart';
+import 'package:red_carga/core/session/auth_bloc.dart';
 
 /// Pantalla de registro de cliente (3 pasos)
 class SignUpClientPage extends StatelessWidget {
@@ -34,6 +35,7 @@ class SignUpClientPage extends StatelessWidget {
             AuthRepositories.createFirebaseAuthRepository(),
         identityRemoteRepository:
             AuthRepositories.createIdentityRemoteRepository(),
+        authBloc: context.read<AuthBloc>(),
       ),
       child: BlocConsumer<SignUpClientBloc, SignUpClientState>(
         listener: (context, state) {

@@ -9,6 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+  flutter_svg: ^2.0.9
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  equatable: ^2.0.5
+  flutter_bloc: ^8.1.3
+  url_launcher: ^6.2.2
 
 dev_dependencies:
   flutter_test:
@@ -17,3 +26,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
+  # Assets (imágenes, iconos, etc.)
+  assets:
+    - assets/images/
+    - assets/icons/

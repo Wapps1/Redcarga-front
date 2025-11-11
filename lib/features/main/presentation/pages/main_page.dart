@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/features/deals/presentation/pages/chats_page.dart';
 import 'package:red_carga/features/deals/presentation/pages/cotizacion_page.dart';
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
+import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
 
@@ -20,18 +21,18 @@ class _MainPageState extends State<MainPage> {
 
   // Páginas para cada rol
   late final List<Widget> _customerPages = <Widget>[
-    const HomePage(),
+    HomePage(role: widget.role),
     const CotizacionPage(),
     const ChatsPage(),
-    const _Stub('Perfil'),
+    ProfilePage(role: widget.role),
   ];
 
   late final List<Widget> _providerPages = <Widget>[
-    const HomePage(),
+    HomePage(role: widget.role),
     const _Stub('Rutas'),
     const _Stub('Documentos'),
     const ChatsPage(),
-    const _Stub('Perfil'),
+    ProfilePage(role: widget.role),
   ];
 
   void _onTabChanged(int index) {

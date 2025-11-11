@@ -1,37 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
-import 'package:red_carga/features/fleet/presentation/widgets/fleet_card.dart';
+import 'package:red_carga/features/fleet/presentation/widgets/driver_card.dart';
 
-class FleetPage extends StatefulWidget {
-  const FleetPage({super.key});
+class DriversPage extends StatefulWidget {
+  const DriversPage({super.key});
 
   @override
-  State<FleetPage> createState() => _FleetPageState();
+  State<DriversPage> createState() => _DriversPageState();
 }
 
-class _FleetPageState extends State<FleetPage> {
-  final List<Map<String, String>> _fleets = [
-    {'name': 'camión1', 'plate': '123-BTW'},
-    {'name': 'camión2', 'plate': '456-XYZ'},
-    {'name': 'camión3', 'plate': '789-ABC'},
+class _DriversPageState extends State<DriversPage> {
+  final List<Map<String, String>> _drivers = [
+    {'name': 'Juan Pérez', 'dni': '12345678', 'phone': '+51 123123123'},
+    {'name': 'Carlos Ruiz', 'dni': '87654321', 'phone': '+51 987654321'},
+    {'name': 'Luis Gómez', 'dni': '11223344', 'phone': '+51 999888777'},
   ];
 
-  Future<void> _openCreateFleetDialog() async {
+  Future<void> _openCreateDriverDialog() async {
     final result = await showDialog<Map<String, String>?>(
       context: context,
       barrierDismissible: true,
       builder: (context) {
-        return const Center(child: CreateFleetDialog());
+        return const Center(
+          child: CreateDriverDialog(),
+        );
       },
     );
 
     if (result != null) {
       setState(() {
-        _fleets.insert(0, result);
+        _drivers.insert(0, result);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Flota creada correctamente')),
+        const SnackBar(content: Text('Conductor creado correctamente')),
       );
     }
   }
@@ -44,7 +46,10 @@ class _FleetPageState extends State<FleetPage> {
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [colorScheme.primary, colorScheme.primaryContainer],
+            colors: [
+              colorScheme.primary,
+              colorScheme.primaryContainer,
+            ],
             begin: Alignment.bottomLeft,
             end: Alignment.topRight,
           ),
@@ -62,11 +67,13 @@ class _FleetPageState extends State<FleetPage> {
                     Row(
                       children: [
                         IconButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
                           icon: const Icon(Icons.arrow_back, color: rcWhite),
                         ),
                         Text(
-                          "Flotas",
+                          "Conductores",
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 color: rcWhite,
                                 fontWeight: FontWeight.bold,
@@ -94,23 +101,23 @@ class _FleetPageState extends State<FleetPage> {
                     ),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // título + botón
+                        // Título y botón
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              "Tus Flotas",
+                              "Tus Conductores",
                               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: rcColor6,
                                   ),
                             ),
                             ElevatedButton(
-                              onPressed: _openCreateFleetDialog,
+                              onPressed: _openCreateDriverDialog,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: rcColor4,
                                 foregroundColor: rcWhite,
@@ -119,22 +126,23 @@ class _FleetPageState extends State<FleetPage> {
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                               ),
-                              child: const Text("Agregar Flota"),
+                              child: const Text("Agregar Conductor"),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
-                        // Lista
+                        // Lista de conductores
                         Expanded(
                           child: ListView.builder(
-                            itemCount: _fleets.length,
                             padding: const EdgeInsets.only(bottom: 24),
+                            itemCount: _drivers.length,
                             itemBuilder: (context, index) {
-                              final f = _fleets[index];
-                              return FleetCard(
-                                name: f['name'] ?? '',
-                                plate: f['plate'] ?? '',
+                              final d = _drivers[index];
+                              return DriverCard(
+                                name: d['name'] ?? '',
+                                dni: d['dni'] ?? '',
+                                phone: d['phone'] ?? '',
                               );
                             },
                           ),
@@ -152,116 +160,143 @@ class _FleetPageState extends State<FleetPage> {
   }
 }
 
-/// ======================
-/// CreateFleetDialog - ventana centrada
-/// ======================
-class CreateFleetDialog extends StatefulWidget {
-  const CreateFleetDialog({super.key});
+class CreateDriverDialog extends StatefulWidget {
+  const CreateDriverDialog({super.key});
 
   @override
-  State<CreateFleetDialog> createState() => _CreateFleetDialogState();
+  State<CreateDriverDialog> createState() => _CreateDriverDialogState();
 }
 
-class _CreateFleetDialogState extends State<CreateFleetDialog> {
+class _CreateDriverDialogState extends State<CreateDriverDialog> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameCtrl = TextEditingController();
-  final TextEditingController _plateCtrl = TextEditingController();
+  final TextEditingController _dniCtrl = TextEditingController();
+  final TextEditingController _phoneCtrl = TextEditingController();
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _plateCtrl.dispose();
+    _dniCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
   void _onCreate() {
     if (_formKey.currentState?.validate() ?? false) {
-      final fleet = {
+      final driver = {
         'name': _nameCtrl.text.trim(),
-        'plate': _plateCtrl.text.trim(),
+        'dni': _dniCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim(),
       };
-      Navigator.of(context).pop(fleet);
+      Navigator.of(context).pop(driver);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final dialogWidth = width > 700 ? 520.0 : width * 0.9;
+    final dialogWidth = width > 700 ? 600.0 : width * 0.9;
 
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: dialogWidth),
+          constraints: BoxConstraints(maxWidth: dialogWidth, maxHeight: MediaQuery.of(context).size.height * 0.9),
           child: Material(
-            color: rcColor1,
             borderRadius: BorderRadius.circular(18),
+            color: rcColor1,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Título
                     Text(
-                      'Crear Flota',
+                      'Crear Conductor',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 18),
+
+                    // Formulario
                     Form(
                       key: _formKey,
                       child: Column(
                         children: [
-                          // Nombre
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Nombre', style: Theme.of(context).textTheme.bodyMedium),
-                              const SizedBox(height: 6),
-                              TextFormField(
-                                controller: _nameCtrl,
-                                decoration: InputDecoration(
-                                  hintText: 'Nombre',
-                                  filled: true,
-                                  fillColor: rcWhite,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) return 'Ingresa el nombre';
-                                  return null;
-                                },
-                              ),
-                            ],
+                          _LabeledTextField(
+                            controller: _nameCtrl,
+                            label: 'Nombre',
+                            hint: 'Nombre',
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Ingresa el nombre';
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 12),
 
-                          // Placa
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Placa', style: Theme.of(context).textTheme.bodyMedium),
-                              const SizedBox(height: 6),
-                              TextFormField(
-                                controller: _plateCtrl,
-                                decoration: InputDecoration(
-                                  hintText: 'Placa',
-                                  filled: true,
-                                  fillColor: rcWhite,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) return 'Ingresa la placa';
-                                  return null;
-                                },
-                              ),
-                            ],
+                          _LabeledTextField(
+                            controller: _dniCtrl,
+                            label: 'DNI',
+                            hint: 'DNI',
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Ingresa el DNI';
+                              if (v.trim().length < 6) return 'DNI inválido';
+                              return null;
+                            },
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 12),
 
-                          // Botones
+                          _LabeledTextField(
+                            controller: _phoneCtrl,
+                            label: 'Teléfono',
+                            hint: 'Teléfono',
+                            keyboardType: TextInputType.phone,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Ingresa el teléfono';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Licencia
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Licencia de conducir',
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(color: rcColor6)),
+                          ),
+                          const SizedBox(height: 8),
+
+                          GestureDetector(
+                            onTap: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Aquí se abriría la cámara/galería')),
+                              );
+                            },
+                            child: Container(
+                              height: 120,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: rcWhite,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: rcColor4.withOpacity(0.3), width: 2),
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.camera_alt_outlined, size: 28, color: rcColor4),
+                                    SizedBox(height: 8),
+                                    Text('Tomar foto', style: TextStyle(color: rcColor4)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
                           Row(
                             children: [
                               Expanded(
@@ -301,6 +336,45 @@ class _CreateFleetDialogState extends State<CreateFleetDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LabeledTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final String? Function(String?)? validator;
+  final TextInputType? keyboardType;
+
+  const _LabeledTextField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.validator,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(
+            hintText: hint,
+            filled: true,
+            fillColor: rcWhite,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          validator: validator,
+        ),
+      ],
     );
   }
 }

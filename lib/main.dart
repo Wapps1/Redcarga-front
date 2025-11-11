@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
+import 'package:red_carga/features/fleet/presentation/pages/drivers_page.dart';
+import 'package:red_carga/features/fleet/presentation/pages/fleet_page.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 
 void main() {
@@ -16,7 +18,8 @@ class MainApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: materialTheme.light(),
       darkTheme: materialTheme.dark(),
-      home: const MainPage(role: UserRole.customer), 
+      //home: const MainPage(role: UserRole.customer), 
+      home: const FleetPage(),
     );
   }
 }

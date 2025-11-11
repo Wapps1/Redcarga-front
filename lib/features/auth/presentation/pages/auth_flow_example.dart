@@ -42,14 +42,8 @@ class _AuthFlowExampleState extends State<AuthFlowExample> {
           onBack: () => _navigateTo('welcome'),
           onRegisterClick: () => _navigateTo('choose_account'),
           onSignInSuccess: () {
-            // TODO: Navegar a la pantalla principal después del login exitoso
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Login exitoso - Navegar a Home'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            // _navigateTo('home'); // Cuando tengas la pantalla principal
+            // El AuthWrapper se encargará automáticamente de navegar al home
+            // cuando el estado de autenticación cambie a AuthSignedIn
           },
         );
       case 'sign_up_client':

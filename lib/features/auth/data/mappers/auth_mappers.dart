@@ -39,6 +39,7 @@ extension RegisterStartResponseDtoToDomain on RegisterStartResponseDto {
 
 extension AppLoginRequestToDto on AppLoginRequest {
   AppLoginRequestDto toDto() {
+    print('🔄 [AppLoginRequestToDto] Convirtiendo a DTO - Platform: ${platform.value}, IP: $ip');
     return AppLoginRequestDto(
       platform: platform.value,
       ip: ip,

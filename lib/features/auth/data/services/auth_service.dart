@@ -18,18 +18,47 @@ class AuthService {
   Future<RegisterStartResponseDto> registerStart(
     RegisterStartRequestDto request,
   ) async {
+    final endpoint = ApiConstants.registerStartEndpoint;
+    final finalEndpoint = endpoint.replaceAll('localhost', '10.0.2.2').replaceAll('127.0.0.1', '10.0.2.2');
+    final url = Uri.parse(finalEndpoint);
+    final body = jsonEncode(request.toJson());
+    
+    print('🚀 [AuthService] Register Start - POST $url');
+    print('📤 [AuthService] Request body: $body');
+    
     final response = await _client.post(
-      Uri.parse(ApiConstants.registerStartEndpoint),
+      url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(request.toJson()),
+      body: body,
     );
+
+    print('📥 [AuthService] Response status: ${response.statusCode}');
+    print('📥 [AuthService] Response body: ${response.body}');
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       return RegisterStartResponseDto.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,
       );
     } else {
-      throw Exception('Failed to register: ${response.statusCode}');
+      // Intentar parsear el error como JSON
+      String errorMessage = 'Failed to register: ${response.statusCode}';
+      if (response.body.isNotEmpty) {
+        try {
+          final errorBody = jsonDecode(response.body) as Map<String, dynamic>?;
+          errorMessage = errorBody?['message'] ?? 
+              errorBody?['error'] ?? 
+              errorBody?['detail'] ??
+              errorMessage;
+        } catch (e) {
+          // Si no es JSON, usar el body directamente
+          if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+            errorMessage = 'Backend returned HTML (${response.statusCode}). Check if the backend is running at $finalEndpoint';
+          } else {
+            errorMessage = 'Error ${response.statusCode}: ${response.body}';
+          }
+        }
+      }
+      throw Exception('Failed to register: $errorMessage');
     }
   }
 

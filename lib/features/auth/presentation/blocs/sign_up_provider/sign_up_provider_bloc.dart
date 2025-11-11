@@ -175,6 +175,11 @@ class SignUpProviderBloc
     SignUpProviderRegisterStart event,
     Emitter<SignUpProviderState> emit,
   ) async {
+    print('🚀 [SignUpProviderBloc] Iniciando registro de proveedor...');
+    print('📧 [SignUpProviderBloc] Email: ${state.email}');
+    print('👤 [SignUpProviderBloc] Username: ${state.username}');
+    print('🔐 [SignUpProviderBloc] Password: ${state.password.isNotEmpty ? "***" : "vacío"}');
+    
     emit(state.copyWith(isLoading: true, error: null));
 
     try {
@@ -184,10 +189,12 @@ class SignUpProviderBloc
           username: Username(state.username),
           password: Password(state.password),
           roleCode: RoleCode.provider,
-          platform: Platform.android,
+          platform: Platform.web, // Cambiado a web como en el login
         ),
       );
 
+      print('✅ [SignUpProviderBloc] Registro exitoso - AccountId: ${result.accountId}');
+      
       emit(state.copyWith(
         step: 2,
         verificationLink: result.verificationLink,
@@ -195,7 +202,9 @@ class SignUpProviderBloc
         signupIntentId: result.signupIntentId,
         isLoading: false,
       ));
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [SignUpProviderBloc] Error en registro: $e');
+      print('Stack trace: $stackTrace');
       emit(state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -203,53 +212,143 @@ class SignUpProviderBloc
     }
   }
 
-  void _onEmailVerified(
+  Future<void> _onEmailVerified(
     SignUpProviderEmailVerified event,
     Emitter<SignUpProviderState> emit,
-  ) {
-    emit(state.copyWith(emailVerified: true, step: 3));
+  ) async {
+    print('📧 [SignUpProviderBloc] Verificando estado del email...');
+    emit(state.copyWith(isLoading: true, error: null));
+
+    try {
+      // Paso 1: Hacer sign in con Firebase
+      print('🔥 [SignUpProviderBloc] Paso 1: Autenticando con Firebase...');
+      final firebaseSession = await _firebaseAuthRepository.signInWithPassword(
+        Email(state.email),
+        Password(state.password),
+      );
+      print('✅ [SignUpProviderBloc] Firebase sign in exitoso - UID: ${firebaseSession.uid}');
+      
+      // Paso 2: Verificar con el backend si el email está verificado
+      // El backend tiene un endpoint que verifica el estado del email
+      // Por ahora, si el sign in fue exitoso, asumimos que el email está verificado
+      // El backend verificará definitivamente cuando se cree la persona
+      
+      print('✅ [SignUpProviderBloc] Email verificado - Avanzando al siguiente paso');
+      emit(state.copyWith(
+        emailVerified: true,
+        step: 3,
+        isLoading: false,
+      ));
+    } catch (e, stackTrace) {
+      print('❌ [SignUpProviderBloc] Error al verificar email: $e');
+      print('Stack trace: $stackTrace');
+      
+      String errorMessage = 'No se pudo verificar el email. ';
+      if (e.toString().contains('EMAIL_NOT_VERIFIED') || 
+          e.toString().contains('email-not-verified')) {
+        errorMessage += 'Por favor, verifica tu email haciendo clic en el enlace que recibiste por correo.';
+      } else if (e.toString().contains('INVALID_PASSWORD') || 
+                 e.toString().contains('invalid-password')) {
+        errorMessage += 'Credenciales incorrectas.';
+      } else {
+        errorMessage += 'Asegúrate de haber hecho clic en el enlace de verificación que recibiste por correo y espera unos segundos antes de intentar de nuevo.';
+      }
+      
+      emit(state.copyWith(
+        isLoading: false,
+        error: errorMessage,
+      ));
+    }
   }
 
   Future<void> _onVerifyPerson(
     SignUpProviderVerifyPerson event,
     Emitter<SignUpProviderState> emit,
   ) async {
-    if (state.accountId == null) return;
+    if (state.accountId == null) {
+      print('❌ [SignUpProviderBloc] AccountId es null, no se puede crear persona');
+      emit(state.copyWith(
+        error: 'Error: AccountId no disponible. Por favor, intenta de nuevo.',
+      ));
+      return;
+    }
+
+    print('👤 [SignUpProviderBloc] Iniciando creación de persona...');
+    print('📋 [SignUpProviderBloc] AccountId: ${state.accountId}');
+    print('📋 [SignUpProviderBloc] FullName: ${state.fullName}');
+    print('📋 [SignUpProviderBloc] DocType: ${state.documentType}');
+    print('📋 [SignUpProviderBloc] DocNumber: ${state.documentNumber}');
+    print('📋 [SignUpProviderBloc] BirthDate: ${state.birthDate}');
+    print('📋 [SignUpProviderBloc] Phone: ${state.phone}');
+    print('📋 [SignUpProviderBloc] RUC: ${state.ruc}');
 
     emit(state.copyWith(isLoading: true, error: null));
 
     try {
       // Firebase sign in
-      await _firebaseAuthRepository.signInWithPassword(
+      print('🔥 [SignUpProviderBloc] Paso 1: Autenticando con Firebase...');
+      final firebaseSession = await _firebaseAuthRepository.signInWithPassword(
         Email(state.email),
         Password(state.password),
       );
+      print('✅ [SignUpProviderBloc] Firebase login exitoso - UID: ${firebaseSession.uid}');
 
       // Normalizar fecha
       String normalizedBirthDate = state.birthDate;
       if (RegExp(r'^\d{2}/\d{2}/\d{4}$').hasMatch(state.birthDate)) {
         final parts = state.birthDate.split('/');
         normalizedBirthDate = '${parts[2]}-${parts[1]}-${parts[0]}';
+        print('📅 [SignUpProviderBloc] Fecha normalizada: $normalizedBirthDate');
       }
 
+      // Paso 2: Verificar que el backend sepa que el email está verificado
+      // El endpoint de verificación debería haberse llamado cuando el usuario hizo clic en el enlace
+      // Pero por si acaso, intentamos crear la persona directamente
+      // Si falla con 403, significa que el email no está verificado en el backend
+      
       // Crear persona
-      await _identityRemoteRepository.verifyAndCreatePerson(
-        PersonCreateRequest(
-          accountId: state.accountId!,
-          fullName: state.fullName,
-          docTypeCode: state.documentType,
-          docNumber: state.documentNumber,
-          birthDate: normalizedBirthDate,
-          phone: state.phone,
-          ruc: state.ruc,
-        ),
-      );
+      print('👤 [SignUpProviderBloc] Paso 2: Creando persona en backend...');
+      try {
+        await _identityRemoteRepository.verifyAndCreatePerson(
+          PersonCreateRequest(
+            accountId: state.accountId!,
+            fullName: state.fullName,
+            docTypeCode: state.documentType,
+            docNumber: state.documentNumber,
+            birthDate: normalizedBirthDate,
+            phone: state.phone,
+            ruc: state.ruc,
+          ),
+        );
 
-      emit(state.copyWith(step: 4, isLoading: false));
-    } catch (e) {
+        print('✅ [SignUpProviderBloc] Persona creada exitosamente');
+        emit(state.copyWith(step: 4, isLoading: false));
+      } catch (e) {
+        // Si el error es 403, puede ser que el email no esté verificado en el backend
+        if (e.toString().contains('403') || e.toString().contains('signup_intent_invalid_state')) {
+          print('⚠️ [SignUpProviderBloc] Error 403 - El email puede no estar verificado en el backend');
+          print('💡 [SignUpProviderBloc] Asegúrate de haber hecho clic en el enlace de verificación que recibiste por correo');
+          rethrow; // Re-lanzar el error para que se muestre al usuario
+        }
+        rethrow;
+      }
+    } catch (e, stackTrace) {
+      print('❌ [SignUpProviderBloc] Error al crear persona: $e');
+      print('Stack trace: $stackTrace');
+      
+      String errorMessage = 'Error al crear persona. ';
+      if (e.toString().contains('403') || 
+          e.toString().contains('signup_intent_invalid_state') ||
+          e.toString().contains('Forbidden')) {
+        errorMessage = 'El email no está verificado en el backend. ';
+        errorMessage += 'Por favor, asegúrate de haber hecho clic en el enlace de verificación que recibiste por correo y espera unos segundos antes de intentar de nuevo.';
+      } else {
+        errorMessage += e.toString();
+      }
+      
       emit(state.copyWith(
         isLoading: false,
-        error: e.toString(),
+        error: errorMessage,
       ));
     }
   }
@@ -278,7 +377,7 @@ class SignUpProviderBloc
 
       // App login
       await _authRemoteRepository.login(
-        AppLoginRequest(platform: Platform.android, ip: '0.0.0.0'),
+        AppLoginRequest(platform: Platform.web, ip: '192.168.1.1', ttlSeconds: 3600),
       );
 
       emit(state.copyWith(isLoading: false, isSuccess: true));

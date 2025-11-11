@@ -47,9 +47,15 @@ class SignUpProviderPage extends StatelessWidget {
               SnackBar(
                 content: Text(state.error!),
                 backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
               ),
             );
           }
+        },
+        listenWhen: (previous, current) {
+          // Solo escuchar cambios relevantes para evitar mensajes duplicados
+          return previous.isSuccess != current.isSuccess ||
+              previous.error != current.error;
         },
         builder: (context, state) {
           return Scaffold(
@@ -135,7 +141,7 @@ class SignUpProviderPage extends StatelessWidget {
       case 1:
         return 'Registrar';
       case 2:
-        return state.emailVerified ? 'Continuar' : 'Verificar Email';
+        return state.emailVerified ? 'Continuar' : 'Ya verifiqué mi email';
       case 3:
         return 'Siguiente';
       case 4:
@@ -155,6 +161,7 @@ class SignUpProviderPage extends StatelessWidget {
             _isValidEmail(state.email) &&
             !state.isLoading;
       case 2:
+        // Permitir presionar el botón para verificar (no requiere que ya esté verificado)
         return !state.isLoading;
       case 3:
         return state.fullName.isNotEmpty &&
@@ -191,9 +198,9 @@ class SignUpProviderPage extends StatelessWidget {
         bloc.add(const SignUpProviderRegisterStart());
         break;
       case 2:
-        if (!state.emailVerified) {
-          bloc.add(const SignUpProviderEmailVerified());
-        }
+        // Siempre intentar verificar el email cuando se presiona el botón
+        // El evento verifica con Firebase y actualiza el estado
+        bloc.add(const SignUpProviderEmailVerified());
         break;
       case 3:
         bloc.add(const SignUpProviderVerifyPerson());
@@ -339,7 +346,7 @@ class SignUpProviderPage extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           )
-        else
+        else ...[
           TextButton(
             onPressed: () async {
               final link = state.verificationLink
@@ -347,13 +354,51 @@ class SignUpProviderPage extends StatelessWidget {
                   .replaceAll('https://localhost:8080', 'http://10.0.2.2:8080');
               if (link.isNotEmpty) {
                 final uri = Uri.parse(link);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri);
+                try {
+                  print('🔗 [SignUpProviderPage] Intentando abrir URL: $link');
+                  // Intentar abrir en el navegador externo
+                  final launched = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication, // Abrir en navegador externo
+                  );
+                  print('🔗 [SignUpProviderPage] Resultado de launchUrl: $launched');
+                  
+                  if (!launched) {
+                    // Si no se pudo abrir, mostrar el enlace para copiar
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('No se pudo abrir el enlace automáticamente. Cópialo: $link'),
+                        duration: const Duration(seconds: 10),
+                        action: SnackBarAction(
+                          label: 'Copiar',
+                          onPressed: () {
+                            // Aquí podrías copiar al portapapeles si tienes el paquete clipboard
+                          },
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  print('❌ [SignUpProviderPage] Error al abrir el enlace: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al abrir el enlace: $e\n\nEnlace: $link'),
+                      duration: const Duration(seconds: 10),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
                 }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('No hay enlace de verificación disponible'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             child: const Text(
-              'Verificar Email',
+              'Abrir enlace de verificación',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -361,6 +406,16 @@ class SignUpProviderPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Después de verificar tu email en el navegador, presiona el botón de abajo para continuar.',
+            style: TextStyle(
+              fontSize: 12,
+              color: rcColor6.withOpacity(0.6),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ],
     );
   }

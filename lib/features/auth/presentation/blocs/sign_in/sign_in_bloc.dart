@@ -5,18 +5,22 @@ import '../../../domain/models/value/platform.dart' as domain;
 import '../../../domain/models/session/app_login_request.dart';
 import '../../../domain/repositories/auth_remote_repository.dart';
 import '../../../domain/repositories/firebase_auth_repository.dart';
+import 'package:red_carga/core/session/auth_bloc.dart';
 import 'sign_in_event.dart';
 import 'sign_in_state.dart';
 
 class SignInBloc extends Bloc<SignInEvent, SignInState> {
   final AuthRemoteRepository _authRemoteRepository;
   final FirebaseAuthRepository _firebaseAuthRepository;
+  final AuthBloc _authBloc;
 
   SignInBloc({
     required AuthRemoteRepository authRemoteRepository,
     required FirebaseAuthRepository firebaseAuthRepository,
+    required AuthBloc authBloc,
   })  : _authRemoteRepository = authRemoteRepository,
         _firebaseAuthRepository = firebaseAuthRepository,
+        _authBloc = authBloc,
         super(const SignInState()) {
     on<SignInEmailChanged>(_onEmailChanged);
     on<SignInPasswordChanged>(_onPasswordChanged);
@@ -38,6 +42,7 @@ class SignInBloc extends Bloc<SignInEvent, SignInState> {
     SignInSubmitted event,
     Emitter<SignInState> emit,
   ) async {
+    print('🚀🚀🚀 [SignInBloc] MÉTODO _onSubmitted EJECUTADO - VERSIÓN NUEVA 🚀🚀🚀');
     print('🔐 [SignInBloc] Iniciando proceso de login...');
     emit(state.copyWith(isLoading: true, clearError: true, clearSuccess: true));
 
@@ -52,15 +57,32 @@ class SignInBloc extends Bloc<SignInEvent, SignInState> {
 
       // Paso 2: Backend login
       print('🌐 [SignInBloc] Paso 2: Autenticando con backend...');
+      
+      // FORZAR valores WEB y 192.168.1.1
       final platform = domain.Platform.web;
       final ip = '192.168.1.1';
       final ttlSeconds = 3600; // 1 hora (igual que en Swagger)
       
-      final appSession = await _authRemoteRepository.login(
-        AppLoginRequest(platform: platform, ip: ip, ttlSeconds: ttlSeconds),
+      // Logs de verificación
+      print('🔍 [SignInBloc] VERIFICACIÓN - Platform enum: $platform');
+      print('🔍 [SignInBloc] VERIFICACIÓN - Platform.value: ${platform.value}');
+      print('🔍 [SignInBloc] VERIFICACIÓN - IP: $ip');
+      
+      final loginRequest = AppLoginRequest(
+        platform: platform, 
+        ip: ip, 
+        ttlSeconds: ttlSeconds,
       );
+      
+      print('🔍 [SignInBloc] VERIFICACIÓN - Request platform: ${loginRequest.platform.value}');
+      print('🔍 [SignInBloc] VERIFICACIÓN - Request IP: ${loginRequest.ip}');
+      
+      final appSession = await _authRemoteRepository.login(loginRequest);
       print('✅ [SignInBloc] Backend login exitoso - AccountId: ${appSession.accountId}, Roles: ${appSession.roles.map((r) => r.value).join(", ")}');
 
+      // Guardar sesión en el AuthBloc global
+      _authBloc.add(AuthAppSessionSaved(appSession));
+      
       print('🎉 [SignInBloc] Login completo exitoso');
       emit(state.copyWith(
         isLoading: false,

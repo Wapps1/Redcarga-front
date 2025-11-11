@@ -5,6 +5,7 @@ import '../../../../core/widgets/rc_back_button.dart';
 import '../../../../core/widgets/rc_button.dart';
 import '../../../../core/widgets/rc_text_field.dart';
 import '../../../../core/theme.dart';
+import 'package:red_carga/core/session/auth_bloc.dart';
 import '../blocs/sign_in/sign_in_bloc.dart';
 import '../blocs/sign_in/sign_in_event.dart';
 import '../blocs/sign_in/sign_in_state.dart';
@@ -29,6 +30,7 @@ class SignInPage extends StatelessWidget {
       create: (context) => SignInBloc(
         authRemoteRepository: AuthRepositories.createAuthRemoteRepository(),
         firebaseAuthRepository: AuthRepositories.createFirebaseAuthRepository(),
+        authBloc: context.read<AuthBloc>(),
       ),
       child: Scaffold(
         body: Stack(

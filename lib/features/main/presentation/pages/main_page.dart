@@ -20,14 +20,14 @@ class _MainPageState extends State<MainPage> {
 
   // Páginas para cada rol
   late final List<Widget> _customerPages = <Widget>[
-    const HomePage(),
+    HomePage(role: widget.role),
     const CotizacionPage(),
     const ChatsPage(),
     const _Stub('Perfil'),
   ];
 
   late final List<Widget> _providerPages = <Widget>[
-    const HomePage(),
+    HomePage(role: widget.role),
     const _Stub('Rutas'),
     const _Stub('Documentos'),
     const ChatsPage(),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:red_carga/features/deals/presentation/pages/chats_page.dart';
-import 'package:red_carga/features/deals/presentation/pages/cotizacion_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_chats_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
 import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
 import '../widgets/customer_bottom_bar.dart';

@@ -12,6 +12,7 @@ class BackendConfig {
   
   /// Obtiene la URL base según el entorno actual
   static String get baseUrl {
+    
     switch (currentEnvironment) {
       case BackendEnvironment.local:
         return _localBaseUrl;

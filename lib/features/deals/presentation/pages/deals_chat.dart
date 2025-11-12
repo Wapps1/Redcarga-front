@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
@@ -17,6 +18,8 @@ import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_chat_card.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 class ChatPage extends StatefulWidget {
   final String nombre;
@@ -32,6 +35,35 @@ class ChatPage extends StatefulWidget {
 
   @override
   State<ChatPage> createState() => _ChatPageState();
+}
+
+// Modelo de mensaje del chat
+class ChatMessage {
+  final String id;
+  final String text;
+  final bool isMe;
+  final DateTime timestamp;
+  final String? imagePath;
+  final String? filePath;
+  final String? fileName;
+  final MessageType type;
+
+  ChatMessage({
+    required this.id,
+    required this.text,
+    required this.isMe,
+    required this.timestamp,
+    this.imagePath,
+    this.filePath,
+    this.fileName,
+    required this.type,
+  });
+}
+
+enum MessageType {
+  text,
+  image,
+  file,
 }
 
 // Estados para acciones del chat
@@ -51,10 +83,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   bool _isActionsExpanded = false;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
   
   // Cambiar este valor para forzar acceptedDeal a false (comentar/descomentar)
   // final bool _actualAcceptedDeal = false;
   late bool _actualAcceptedDeal;
+  
+  // Lista de mensajes del chat
+  final List<ChatMessage> _messages = [];
   
   // Estados de acciones del chat
   ChatAction _otherPersonAction = ChatAction.none; // Acción de la otra persona
@@ -81,6 +117,53 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     _tabController.addListener(() {
       setState(() {});
     });
+    
+    // Listener para detectar Enter y enviar mensaje
+    _messageController.addListener(() {
+      final text = _messageController.text;
+      // Si el texto termina con un salto de línea, enviar el mensaje
+      if (text.endsWith('\n') && text.trim().isNotEmpty) {
+        // Remover el salto de línea
+        _messageController.text = text.substring(0, text.length - 1);
+        _messageController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _messageController.text.length),
+        );
+        // Enviar el mensaje
+        _enviarMensaje();
+      }
+    });
+    
+    // Agregar algunos mensajes de ejemplo
+    _messages.addAll([
+      ChatMessage(
+        id: '1',
+        text: 'Hola, estoy interesado en tu cotización',
+        isMe: false,
+        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+        type: MessageType.text,
+      ),
+      ChatMessage(
+        id: '2',
+        text: 'Perfecto, podemos coordinar la entrega',
+        isMe: true,
+        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
+        type: MessageType.text,
+      ),
+      ChatMessage(
+        id: '3',
+        text: '¿Cuándo podríamos iniciar?',
+        isMe: false,
+        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 30)),
+        type: MessageType.text,
+      ),
+      ChatMessage(
+        id: '4',
+        text: 'Podríamos iniciar la próxima semana',
+        isMe: true,
+        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+        type: MessageType.text,
+      ),
+    ]);
   }
 
   @override
@@ -245,100 +328,22 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Área de chat
           Expanded(
-            child: ListView(
+            child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              children: [
-                // Mensajes de ejemplo
-                _buildMessageBubble(
-                  'Hola, estoy interesado en tu cotización',
-                  false,
-                  colorScheme,
-                ),
-                const SizedBox(height: 12),
-                _buildMessageBubble(
-                  'Perfecto, podemos coordinar la entrega',
-                  true,
-                  colorScheme,
-                ),
-                const SizedBox(height: 12),
-                _buildMessageBubble(
-                  '¿Cuándo podríamos iniciar?',
-                  false,
-                  colorScheme,
-                ),
-                const SizedBox(height: 12),
-                _buildMessageBubble(
-                  'Podríamos iniciar la próxima semana',
-                  true,
-                  colorScheme,
-                ),
-                // Mostrar card de contraoferta si hay una acción de contraoferta
-                if (_otherPersonAction == ChatAction.counteroffer) ...[
-                  const SizedBox(height: 12),
-                  CounterofferChatCard(
-                    precio: _counterofferPrice,
-                    isMyCounteroffer: _isMyCounteroffer,
-                    onAceptar: () {
-                      setState(() {
-                        _otherPersonAction = ChatAction.none;
-                      });
-                      // TODO: Aceptar contraoferta
-                    },
-                    onRechazar: () {
-                      setState(() {
-                        _otherPersonAction = ChatAction.none;
-                      });
-                      // TODO: Rechazar contraoferta
-                    },
-                  ),
-                ],
-                // Mostrar card de cancelación de trato si hay una acción de cancelación
-                if (_otherPersonAction == ChatAction.dealCancellation) ...[
-                  const SizedBox(height: 12),
-                  CancelDealChatCard(
-                    isMyCancellation: _isMyCancellation,
-                  ),
-                ],
-                // Mostrar card de pago realizado si hay una acción de pago
-                if (_otherPersonAction == ChatAction.paymentMade) ...[
-                  const SizedBox(height: 12),
-                  PaymentMadeChatCard(
-                    isMyPayment: _isMyPayment,
-                  ),
-                ],
-                // Mostrar card de paquete recibido si hay una acción de recepción
-                if (_otherPersonAction == ChatAction.packageReceived) ...[
-                  const SizedBox(height: 12),
-                  PackageReceivedChatCard(
-                    isMyReceipt: _isMyPackageReceived,
-                  ),
-                ],
-                // Mostrar card de aceptación de trato si hay una acción de aceptación
-                if (_otherPersonAction == ChatAction.dealAcceptance) ...[
-                  const SizedBox(height: 12),
-                  AcceptDealChatCard(
-                    isMyAcceptance: _isMyDealAcceptance,
-                    fleet: _assignedFleet,
-                    driver: _assignedDriver,
-                  ),
-                ],
-                // Mostrar card de carga enviada si hay una acción de envío
-                if (_otherPersonAction == ChatAction.shipmentSent) ...[
-                  const SizedBox(height: 12),
-                  ShipmentSentChatCard(
-                    isMyShipment: _isMyShipmentSent,
-                  ),
-                ],
-                // Mostrar card de edición de documento si hay una acción de edición
-                if (_otherPersonAction == ChatAction.quoteEdit) ...[
-                  const SizedBox(height: 12),
-                  EditDealChatCard(
-                    acceptedDeal: _actualAcceptedDeal,
-                    isMyEdit: _isMyEdit,
-                  ),
-                ],
-              ],
+              itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
+              itemBuilder: (context, index) {
+                // Mostrar cards de acciones especiales si existen
+                if (index == _messages.length && _otherPersonAction != ChatAction.none) {
+                  return _buildActionCard(colorScheme);
+                }
+                
+                final message = _messages[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildMessageWidget(message, colorScheme),
+                );
+              },
             ),
           ),
 
@@ -350,6 +355,68 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  Widget _buildActionCard(ColorScheme colorScheme) {
+    switch (_otherPersonAction) {
+      case ChatAction.counteroffer:
+        return CounterofferChatCard(
+          precio: _counterofferPrice,
+          isMyCounteroffer: _isMyCounteroffer,
+          onAceptar: () {
+            setState(() {
+              _otherPersonAction = ChatAction.none;
+            });
+            // TODO: Aceptar contraoferta
+          },
+          onRechazar: () {
+            setState(() {
+              _otherPersonAction = ChatAction.none;
+            });
+            // TODO: Rechazar contraoferta
+          },
+        );
+      case ChatAction.dealCancellation:
+        return CancelDealChatCard(
+          isMyCancellation: _isMyCancellation,
+        );
+      case ChatAction.paymentMade:
+        return PaymentMadeChatCard(
+          isMyPayment: _isMyPayment,
+        );
+      case ChatAction.packageReceived:
+        return PackageReceivedChatCard(
+          isMyReceipt: _isMyPackageReceived,
+        );
+      case ChatAction.dealAcceptance:
+        return AcceptDealChatCard(
+          isMyAcceptance: _isMyDealAcceptance,
+          fleet: _assignedFleet,
+          driver: _assignedDriver,
+        );
+      case ChatAction.shipmentSent:
+        return ShipmentSentChatCard(
+          isMyShipment: _isMyShipmentSent,
+        );
+      case ChatAction.quoteEdit:
+        return EditDealChatCard(
+          acceptedDeal: _actualAcceptedDeal,
+          isMyEdit: _isMyEdit,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildMessageWidget(ChatMessage message, ColorScheme colorScheme) {
+    switch (message.type) {
+      case MessageType.text:
+        return _buildMessageBubble(message.text, message.isMe, colorScheme);
+      case MessageType.image:
+        return _buildImageMessage(message, colorScheme);
+      case MessageType.file:
+        return _buildFileMessage(message, colorScheme);
+    }
   }
 
   Widget _buildMessageBubble(String message, bool isMe, ColorScheme colorScheme) {
@@ -374,6 +441,104 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: isMe ? rcWhite : rcColor6,
               ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageMessage(ChatMessage message, ColorScheme colorScheme) {
+    return Align(
+      alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: message.isMe ? colorScheme.primary : rcColor7,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.imagePath != null)
+                Image.file(
+                  File(message.imagePath!),
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      color: rcColor8.withOpacity(0.3),
+                      child: const Center(
+                        child: Icon(Icons.broken_image, color: rcWhite, size: 50),
+                      ),
+                    );
+                  },
+                ),
+              if (message.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    message.text,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: message.isMe ? rcWhite : rcColor6,
+                        ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileMessage(ChatMessage message, ColorScheme colorScheme) {
+    return Align(
+      alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: message.isMe ? colorScheme.primary : rcColor7,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.insert_drive_file,
+              color: message.isMe ? rcWhite : colorScheme.primary,
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    message.fileName ?? 'Archivo',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: message.isMe ? rcWhite : rcColor6,
+                          fontWeight: FontWeight.w600,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (message.text.isNotEmpty)
+                    Text(
+                      message.text,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: message.isMe ? rcWhite.withOpacity(0.8) : rcColor8,
+                          ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -690,23 +855,47 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Botón adjuntar documento
           IconButton(
-            onPressed: () {
-              // TODO: Adjuntar documento
-            },
+            onPressed: _seleccionarArchivo,
             icon: Icon(
               Icons.attach_file,
               color: colorScheme.primary,
             ),
           ),
-          // Botón tomar foto
-          IconButton(
-            onPressed: () {
-              // TODO: Tomar foto
-            },
+          // Botón tomar/seleccionar foto
+          PopupMenuButton<String>(
             icon: Icon(
               Icons.camera_alt,
               color: colorScheme.primary,
             ),
+            onSelected: (value) {
+              if (value == 'camera') {
+                _tomarFoto();
+              } else if (value == 'gallery') {
+                _seleccionarFoto();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'camera',
+                child: Row(
+                  children: [
+                    Icon(Icons.camera_alt),
+                    SizedBox(width: 8),
+                    Text('Tomar foto'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'gallery',
+                child: Row(
+                  children: [
+                    Icon(Icons.photo_library),
+                    SizedBox(width: 8),
+                    Text('Seleccionar de galería'),
+                  ],
+                ),
+              ),
+            ],
           ),
           // Campo de texto
           Expanded(
@@ -717,6 +906,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               ),
               child: TextField(
                 controller: _messageController,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _enviarMensaje(),
+                keyboardType: TextInputType.multiline,
+                maxLines: 4,
+                minLines: 1,
                 decoration: InputDecoration(
                   hintText: 'Escribe un mensaje',
                   hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -728,6 +922,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     vertical: 12,
                   ),
                 ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: rcWhite,
+                    ),
+                textCapitalization: TextCapitalization.sentences,
+                enableSuggestions: true,
+                autocorrect: true,
               ),
             ),
           ),
@@ -741,12 +941,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () {
-                  if (_messageController.text.trim().isNotEmpty) {
-                    // TODO: Enviar mensaje
-                    _messageController.clear();
-                  }
-                },
+                onTap: _enviarMensaje,
                 borderRadius: BorderRadius.circular(24),
                 child: const Padding(
                   padding: EdgeInsets.all(12),
@@ -1236,6 +1431,149 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  // Métodos para manejar mensajes, archivos y fotos
+  void _enviarMensaje() {
+    if (_messageController.text.trim().isNotEmpty) {
+      final newMessage = ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: _messageController.text.trim(),
+        isMe: true,
+        timestamp: DateTime.now(),
+        type: MessageType.text,
+      );
+      
+      setState(() {
+        _messages.add(newMessage);
+      });
+      
+      _messageController.clear();
+      _scrollToBottom();
+      
+      // TODO: Enviar mensaje al servidor
+    }
+  }
+
+  Future<void> _seleccionarArchivo() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.single;
+        // En algunas plataformas (web), path puede ser null, usar name como respaldo
+        final filePath = file.path;
+        final fileName = file.name;
+        
+        if (filePath != null || fileName.isNotEmpty) {
+          final newMessage = ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            text: 'Archivo adjunto: $fileName',
+            isMe: true,
+            timestamp: DateTime.now(),
+            filePath: filePath,
+            fileName: fileName,
+            type: MessageType.file,
+          );
+          
+          setState(() {
+            _messages.add(newMessage);
+          });
+          
+          _scrollToBottom();
+          
+          // TODO: Subir archivo al servidor
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar archivo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _tomarFoto() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        await _enviarImagen(image.path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al tomar foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _seleccionarFoto() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        await _enviarImagen(image.path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _enviarImagen(String imagePath) async {
+    final newMessage = ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      text: _messageController.text.trim(),
+      isMe: true,
+      timestamp: DateTime.now(),
+      imagePath: imagePath,
+      type: MessageType.image,
+    );
+    
+    setState(() {
+      _messages.add(newMessage);
+      _messageController.clear();
+    });
+    
+    _scrollToBottom();
+    
+    // TODO: Subir imagen al servidor
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 }
 

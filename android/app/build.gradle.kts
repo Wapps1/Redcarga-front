@@ -5,6 +5,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// NOTA: No necesitamos el plugin de Google Services porque
+// usamos la API REST de Firebase directamente (igual que en Android)
+// No se requiere google-services.json
+
 android {
     namespace = "pe.edu.upc.red_carga"
     compileSdk = flutter.compileSdkVersion

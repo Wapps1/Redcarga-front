@@ -1,4 +1,16 @@
+import '../core/config/backend_config.dart';
+
 class ApiConstants {
-  static final String baseUrl = 'https://redcarga-api-hreje3evg6engcd5.canadacentral-01.azurewebsites.net';
-  static final String loginEndpoint = '/api/users/login';
+  // URL base obtenida de la configuración del backend
+  static String get baseUrl => BackendConfig.baseUrl;
+  
+  // Auth endpoints (sin /api, igual que Android)
+  static String get registerStartEndpoint => '$baseUrl/iam/register-start';
+  static String get loginEndpoint => '$baseUrl/iam/login';
+  
+  // Identity endpoints
+  static String get verifyAndCreatePersonEndpoint => '$baseUrl/identity/verify-and-create';
+  
+  // Provider endpoints
+  static String get registerCompanyEndpoint => '$baseUrl/providers/company/verify-and-register';
 }

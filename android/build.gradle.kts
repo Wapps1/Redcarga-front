@@ -1,3 +1,11 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    // No necesitamos Google Services plugin porque usamos REST API directamente
+}
+
 allprojects {
     repositories {
         google()

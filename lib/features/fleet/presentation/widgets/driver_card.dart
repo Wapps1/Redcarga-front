@@ -1,78 +1,85 @@
 import 'package:flutter/material.dart';
-import 'package:red_carga/core/theme.dart';
+import '../../domain/driver.dart';
 
 class DriverCard extends StatelessWidget {
-  final String name;
-  final String dni;
-  final String phone;
-
   const DriverCard({
     super.key,
-    required this.name,
-    required this.dni,
-    required this.phone,
+    required this.driver,
+    required this.onViewLicense,
+    this.onDelete,
   });
+
+  final Driver driver;
+  final VoidCallback onViewLicense;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: rcWhite,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            offset: const Offset(0, 2),
-            blurRadius: 5,
+            color: cs.shadow.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
+        border: Border.all(color: cs.outline.withOpacity(.25)),
       ),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRow("Nombre:", name),
-          const SizedBox(height: 4),
-          _buildRow("DNI:", dni),
-          const SizedBox(height: 4),
-          _buildRow("Teléfono:", phone),
-          const SizedBox(height: 10),
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: rcColor3.withOpacity(0.8),
-                foregroundColor: rcWhite,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          _row('Nombre:', driver.name, tt),
+          const SizedBox(height: 6),
+          _row('DNI:', driver.dni, tt),
+          const SizedBox(height: 6),
+          _row('Teléfono:', driver.phone, tt),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: onViewLicense,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.secondaryContainer,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.visibility, color: cs.onSecondaryContainer),
+                      const SizedBox(width: 8),
+                      Text('Licencia de conducir', style: tt.labelLarge?.copyWith(color: cs.onSecondaryContainer)),
+                    ],
+                  ),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              icon: const Icon(Icons.visibility_outlined),
-              label: const Text("Licencia de conducir"),
-            ),
+              if (onDelete != null) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Eliminar',
+                  icon: const Icon(Icons.delete_outline),
+                  color: cs.error,
+                  onPressed: onDelete,
+                ),
+              ],
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              color: rcColor6,
-            )),
-        Text(value,
-            style: const TextStyle(
-              color: rcColor6,
-              fontWeight: FontWeight.w500,
-            )),
-      ],
-    );
-  }
+  Widget _row(String left, String right, TextTheme tt) => Row(
+        children: [
+          Expanded(child: Text(left, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+          Text(right, style: tt.bodyMedium),
+        ],
+      );
 }

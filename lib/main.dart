@@ -19,7 +19,8 @@ class MainApp extends StatelessWidget {
       theme: materialTheme.light(),
       darkTheme: materialTheme.dark(),
       //home: const MainPage(role: UserRole.customer), 
-      home: const FleetPage(),
+      //home: const FleetPage(),
+      home: DriversPage(companyId: 1),
     );
   }
 }

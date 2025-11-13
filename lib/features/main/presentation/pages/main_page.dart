@@ -3,6 +3,7 @@ import 'package:red_carga/features/deals/presentation/pages/deals_chats_page.dar
 import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
 import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
+import 'package:red_carga/features/requests/presentation/pages/requests_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
 
@@ -40,8 +41,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   void _onCreatePressed() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Crear nueva solicitud')),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const RequestsPage(),
+      ),
     );
   }
 

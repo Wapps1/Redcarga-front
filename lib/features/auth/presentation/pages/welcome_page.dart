@@ -35,7 +35,7 @@ class WelcomePage extends StatelessWidget {
                         const SizedBox(height: 30),
                         SvgPicture.asset(
                           'assets/icons/shiny_redcarga_icon.svg',
-                          width: 250, height: 250,
+                          width: 320, height: 320,
                         ),
                         const SizedBox(height: 16),
                         const Text(

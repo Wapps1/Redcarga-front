@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/widgets/rc_background.dart';
 import '../../../../core/widgets/rc_back_button.dart';
 import '../../../../core/widgets/rc_button.dart';
@@ -75,11 +76,15 @@ class SignInPage extends StatelessWidget {
                             child: RcBackButton(onPressed: onBack),
                           ),
                           const SizedBox(height: 20),
+
+                          const SizedBox(height: 20),
+
+                          const SizedBox(height: 20),
                           // Logo
-                          const Icon(
-                            Icons.account_circle,
-                            size: 120,
-                            color: rcColor5,
+                          SvgPicture.asset(
+                            'assets/icons/welcome_icon.svg',
+                            width: 150,
+                            height: 150,
                           ),
                           const SizedBox(height: 20),
                           // Título

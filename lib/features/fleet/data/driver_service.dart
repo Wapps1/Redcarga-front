@@ -52,7 +52,17 @@ class DriverService {
     bool active = true,
   }) async {
     final session = await _sessionStore.getAppSession();
-    if (session == null) throw Exception('No hay sesión');
+    if (session == null) {
+      print('❌ [DriverService] No hay sesión disponible');
+      throw Exception('No hay sesión');
+    }
+
+    // Verificar si el token está expirado
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now >= session.expiresAt) {
+      print('❌ [DriverService] Token expirado. ExpiresAt: ${session.expiresAt}, Now: $now');
+      throw Exception('Sesión expirada. Por favor, inicia sesión nuevamente');
+    }
 
     final payload = {
       'firstName': firstName.trim(),
@@ -63,7 +73,13 @@ class DriverService {
       'active': active,
     };
 
-    final uri = Uri.parse(ApiConstants.companyDrivers(companyId)); // <- lista de la empresa
+    final uri = Uri.parse(ApiConstants.companyDrivers(companyId));
+    
+    print('🚀 [DriverService] Creando conductor - POST $uri');
+    print('📤 [DriverService] CompanyId: $companyId');
+    print('📤 [DriverService] Payload: $payload');
+    print('🔑 [DriverService] Token: ${session.accessToken.substring(0, 20)}...');
+
     final res = await http.post(
       uri,
       headers: {
@@ -74,10 +90,33 @@ class DriverService {
       body: jsonEncode(payload),
     );
 
+    print('📥 [DriverService] Response status: ${res.statusCode}');
+    print('📥 [DriverService] Response body: ${res.body}');
+
     if (res.statusCode == 201 || res.statusCode == 200) {
       return Driver.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
     }
-    throw Exception('Create driver failed: ${res.statusCode} ${res.body}');
+    
+    // Mejor manejo de errores
+    String errorMessage = 'Error al crear conductor';
+    try {
+      final errorBody = jsonDecode(res.body);
+      if (errorBody is Map && errorBody.containsKey('message')) {
+        errorMessage = errorBody['message'];
+      } else if (errorBody is Map && errorBody.containsKey('error')) {
+        errorMessage = errorBody['error'];
+      } else {
+        errorMessage = res.body;
+      }
+    } catch (e) {
+      errorMessage = res.body;
+    }
+    
+    if (res.statusCode == 401) {
+      throw Exception('No autorizado. Tu sesión puede haber expirado. Por favor, inicia sesión nuevamente.');
+    }
+    
+    throw Exception('Error al crear conductor (${res.statusCode}): $errorMessage');
   }
 
   Future<void> deleteDriver(int driverId) async {

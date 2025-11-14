@@ -5,3 +5,4 @@ abstract class ProviderRemoteRepository {
   Future<CompanyRegisterResult> registerCompany(CompanyRegisterRequest request);
 }
 
+

@@ -49,3 +49,4 @@ class RequestItem {
   double get totalWeight => weight * quantity;
 }
 
+

@@ -4,3 +4,4 @@ class CompanyRegisterResult {
   CompanyRegisterResult({required this.companyId});
 }
 
+

@@ -6,3 +6,4 @@ enum Platform {
   String get value => name.toUpperCase();
 }
 
+

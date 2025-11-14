@@ -13,4 +13,16 @@ class ApiConstants {
   
   // Provider endpoints
   static String get registerCompanyEndpoint => '$baseUrl/providers/company/verify-and-register';
+
+  // -------------------------
+  // Fleet - Drivers endpoints
+  // -------------------------
+  static String driverById(int driverId) => '$baseUrl/fleet/drivers/$driverId';
+  static String companyDrivers(int companyId) => '$baseUrl/fleet/companies/$companyId/drivers';
+
+  // --------------------------
+  // Fleet - Vehicles endpoints
+  // --------------------------
+  static String vehicleById(int vehicleId) => '$baseUrl/fleet/vehicles/$vehicleId';
+  static String companyVehicles(int companyId) => '$baseUrl/fleet/companies/$companyId/vehicles';
 }

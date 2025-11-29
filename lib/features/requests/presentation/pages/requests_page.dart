@@ -6,12 +6,29 @@ import '../blocs/requests_event.dart';
 import '../blocs/requests_state.dart';
 import '../../domain/models/template.dart';
 import 'create_request_page.dart';
+import '../../../main/presentation/pages/main_page.dart';
+import 'request_page.dart';
 
 class RequestsPage extends StatelessWidget {
-  const RequestsPage({super.key});
+  final UserRole? role;
+  
+  const RequestsPage({
+    super.key,
+    this.role,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Determinar el rol: si no se pasa, intentar obtenerlo del contexto
+    final userRole = role ?? _getRoleFromContext(context);
+    final isProvider = userRole == UserRole.provider;
+
+    // Si es proveedor, mostrar vista de solicitudes recibidas
+    if (isProvider) {
+      return const SolicitudesPage();
+    }
+
+    // Si es cliente, mostrar vista de plantillas (vista actual)
     return BlocProvider(
       create: (context) => RequestsBloc()..add(const RequestsLoadTemplates()),
       child: Scaffold(
@@ -31,6 +48,13 @@ class RequestsPage extends StatelessWidget {
       ),
     );
   }
+
+  UserRole _getRoleFromContext(BuildContext context) {
+    // Intentar obtener el rol del MainPage a través del contexto
+    // Por defecto, asumir cliente
+    return UserRole.customer;
+  }
+
 
   Widget _buildHeader(BuildContext context) {
     return Container(

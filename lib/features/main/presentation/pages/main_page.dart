@@ -31,7 +31,7 @@ class _MainPageState extends State<MainPage> {
   late final List<Widget> _providerPages = <Widget>[
     HomePage(role: widget.role),
     const _Stub('Rutas'),
-    const _Stub('Documentos'),
+    RequestsPage(role: widget.role),
     const ChatsPage(),
     ProfilePage(role: widget.role),
   ];
@@ -43,7 +43,7 @@ class _MainPageState extends State<MainPage> {
   void _onCreatePressed() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const RequestsPage(),
+        builder: (context) => RequestsPage(role: widget.role),
       ),
     );
   }

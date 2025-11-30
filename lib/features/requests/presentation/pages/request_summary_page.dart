@@ -3,15 +3,22 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
 import '../../domain/models/request_item.dart';
 import '../../data/local/request_local_storage.dart';
+import '../../data/requests_service.dart';
+import '../../data/media_service.dart';
+import '../../data/mappers/request_mappers.dart';
 
 class RequestSummaryPage extends StatefulWidget {
   // Parámetros para cliente (crear solicitud)
   final String? name;
-  final String? originDept;
-  final String? originProv;
+  final String? originDept; // código
+  final String? originDeptName; // nombre
+  final String? originProv; // código
+  final String? originProvName; // nombre
   final String? originDist;
-  final String? destDept;
-  final String? destProv;
+  final String? destDept; // código
+  final String? destDeptName; // nombre
+  final String? destProv; // código
+  final String? destProvName; // nombre
   final String? destDist;
   final String? date;
   final bool? cashOnDelivery;
@@ -25,10 +32,14 @@ class RequestSummaryPage extends StatefulWidget {
     // Constructor para cliente
     this.name,
     this.originDept,
+    this.originDeptName,
     this.originProv,
+    this.originProvName,
     this.originDist,
     this.destDept,
+    this.destDeptName,
     this.destProv,
+    this.destProvName,
     this.destDist,
     this.date,
     this.cashOnDelivery,
@@ -45,7 +56,8 @@ class RequestSummaryPage extends StatefulWidget {
 }
 
 class _RequestSummaryPageState extends State<RequestSummaryPage> {
-  final Map<int, bool> _expandedItems = {};
+  final RequestsService _requestsService = RequestsService();
+  final MediaService _mediaService = MediaService();
 
   // Determinar si es vista de proveedor
   bool get _isProviderView => widget.solicitud != null;
@@ -53,8 +65,8 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
   // Getters para cliente
   int get _totalArticles => widget.items?.fold<int>(0, (sum, item) => sum + item.quantity) ?? 0;
   double get _totalWeight => widget.items?.fold<double>(0.0, (sum, item) => sum + item.totalWeight) ?? 0.0;
-  String get _origin => '${widget.originDist ?? ''}, ${widget.originProv ?? ''}';
-  String get _destination => '${widget.destDist ?? ''}, ${widget.destProv ?? ''}';
+  String get _origin => '${widget.originDist ?? ''}, ${widget.originProvName ?? widget.originProv ?? ''}';
+  String get _destination => '${widget.destDist ?? ''}, ${widget.destProvName ?? widget.destProv ?? ''}';
   
   // Getters para proveedor
   List<Map<String, dynamic>> get _providerArticulos {
@@ -84,15 +96,30 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
     (sum, articulo) => sum + (articulo['pesoTotal'] as double),
   );
 
-  void _toggleItem(int index) {
-    setState(() {
-      _expandedItems[index] = !(_expandedItems[index] ?? false);
-    });
-  }
-
   Future<void> _sendRequest() async {
     // Solo ejecutar si es vista de cliente
     if (_isProviderView) return;
+    
+    // Validar que todos los campos requeridos estén llenos
+    if (widget.name == null || widget.name!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor ingresa un nombre para la solicitud'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (widget.items == null || widget.items!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor agrega al menos un artículo'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     
     try {
       // Mostrar indicador de carga
@@ -106,39 +133,96 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
         ),
       );
 
-      // Guardar la solicitud en almacenamiento local
-      final requestId = await RequestLocalStorage.saveRequest(
+      // Primero, subir todas las imágenes locales
+      final imageUrlMap = <String, String>{};
+      final items = widget.items ?? [];
+      
+      print('📸 [RequestSummaryPage] Verificando imágenes para subir...');
+      for (var item in items) {
+        // Subir todas las imágenes locales del item (imagePaths o imagePath)
+        final imagePaths = item.imagePaths ?? (item.imagePath != null ? [item.imagePath!] : []);
+        for (final imagePath in imagePaths) {
+          if (imagePath != null && 
+              !imagePath.startsWith('http') && 
+              !imagePath.startsWith('https')) {
+            // Es una ruta local, necesitamos subirla
+            try {
+              print('📤 [RequestSummaryPage] Subiendo imagen: $imagePath');
+              final uploadResponse = await _mediaService.uploadImage(imagePath);
+              imageUrlMap[imagePath] = uploadResponse.secureUrl;
+              print('✅ [RequestSummaryPage] Imagen subida: ${uploadResponse.secureUrl}');
+            } catch (e) {
+              // Cerrar el diálogo de carga
+              if (mounted && Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+              
+              // Mostrar error
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al subir imagen: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+              return; // Salir si hay error
+            }
+          }
+        }
+      }
+
+      print('✅ [RequestSummaryPage] Todas las imágenes subidas. Creando solicitud...');
+
+      // Convertir los datos al formato del endpoint con las URLs de las imágenes
+      final requestDto = RequestMappers.toCreateRequestDto(
         name: widget.name ?? '',
-        originDept: widget.originDept ?? '',
-        originProv: widget.originProv ?? '',
+        originDeptCode: widget.originDept ?? '',
+        originDeptName: widget.originDeptName ?? '',
+        originProvCode: widget.originProv ?? '',
+        originProvName: widget.originProvName ?? '',
         originDist: widget.originDist ?? '',
-        destDept: widget.destDept ?? '',
-        destProv: widget.destProv ?? '',
+        destDeptCode: widget.destDept ?? '',
+        destDeptName: widget.destDeptName ?? '',
+        destProvCode: widget.destProv ?? '',
+        destProvName: widget.destProvName ?? '',
         destDist: widget.destDist ?? '',
-        date: widget.date ?? '',
         cashOnDelivery: widget.cashOnDelivery ?? false,
-        items: widget.items ?? [],
+        items: items,
+        imageUrlMap: imageUrlMap,
       );
 
+      // Enviar la solicitud al backend
+      final response = await _requestsService.createRequest(requestDto);
+
       // Cerrar el diálogo de carga
-      if (mounted) {
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
 
-      // Mostrar mensaje de éxito
+      // Mostrar mensaje de éxito brevemente
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Solicitud guardada correctamente (ID: $requestId)'),
+            content: Text(
+              response['message'] as String? ?? 
+              'Solicitud creada exitosamente'
+            ),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 1),
           ),
         );
       }
 
-      // Navegar de vuelta a la pantalla principal
+      // Navegar de vuelta a la pantalla principal (main)
       if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Esperar un momento para que el usuario vea el mensaje de éxito
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          // Regresar al main (primera pantalla en el stack)
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
       }
     } catch (e) {
       // Cerrar el diálogo de carga si está abierto
@@ -150,9 +234,9 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al guardar la solicitud: $e'),
+            content: Text('Error al crear la solicitud: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -342,11 +426,8 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
           ),
           const SizedBox(height: 16),
           _buildSummaryRow('Nombre:', widget.name ?? 'Sin nombre'),
-          const SizedBox(height: 12),
           _buildSummaryRow('Día:', widget.date ?? 'No especificado'),
-          const SizedBox(height: 12),
           _buildSummaryRow('Origen:', _origin),
-          const SizedBox(height: 12),
           _buildSummaryRow('Destino:', _destination),
           const SizedBox(height: 16),
           const Divider(),
@@ -354,8 +435,48 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSummaryRow('Total de Artículos:', '$_totalArticles'),
-              _buildSummaryRow('Peso Total:', '${_totalWeight.toStringAsFixed(1)}kg'),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Total de Artículos:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: rcColor6.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_totalArticles',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: rcColor6,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Peso Total:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: rcColor6.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_totalWeight.toStringAsFixed(1)}kg',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: rcColor6,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ],
@@ -364,31 +485,34 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
   }
 
   Widget _buildSummaryRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: rcColor6.withOpacity(0.7),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: rcColor6.withOpacity(0.7),
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: rcColor6,
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: rcColor6,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -405,159 +529,85 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
           ),
         ),
         const SizedBox(height: 12),
-        ...(widget.items ?? []).asMap().entries.map((entry) {
-          final index = entry.key;
-          final item = entry.value;
-          final isExpanded = _expandedItems[index] ?? false;
+        ...(widget.items ?? []).map((item) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _buildItemCard(item, index, isExpanded),
+            child: _buildItemCard(item),
           );
         }),
       ],
     );
   }
 
-  Widget _buildItemCard(RequestItem item, int index, bool isExpanded) {
-    return GestureDetector(
-      onTap: () => _toggleItem(index),
-      child: Container(
-        decoration: BoxDecoration(
-          color: rcWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: rcColor4.withOpacity(0.3),
-            width: 1,
-          ),
+  Widget _buildItemCard(RequestItem item) {
+    return Container(
+      decoration: BoxDecoration(
+        color: rcWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: rcColor4.withOpacity(0.3),
+          width: 1,
         ),
-        child: Column(
-          children: [
-            // Header del item (siempre visible)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Nombre y tags
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          item.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: rcColor6,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (item.isFragile)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: rcColor5,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'Frágil',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: rcWhite,
-                              ),
-                            ),
-                          ),
-                        const SizedBox(width: 8),
-                        if (item.quantity > 1)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: rcColor2,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'X${item.quantity}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: rcColor6,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  // Icono de expandir/colapsar
-                  Icon(
-                    isExpanded ? Icons.expand_less : Icons.expand_more,
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          // Nombre y tags
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  item.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                     color: rcColor6,
                   ),
-                ],
-              ),
-            ),
-            // Detalles expandibles
-            if (isExpanded)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    // Imagen si existe
-                    if (item.imagePath != null) ...[
-                      Container(
-                        width: double.infinity,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: rcColor4.withOpacity(0.2),
-                            width: 1,
-                          ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(
-                            File(item.imagePath!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    // Dimensiones
-                    if (item.width != null || item.height != null || item.length != null) ...[
-                      const Text(
-                        'Dimensiones:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: rcColor6,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (item.height != null)
-                        _buildDetailRow('Alto:', '${item.height!.toStringAsFixed(1)} cm'),
-                      if (item.width != null)
-                        _buildDetailRow('Ancho:', '${item.width!.toStringAsFixed(1)} cm'),
-                      if (item.length != null)
-                        _buildDetailRow('Largo:', '${item.length!.toStringAsFixed(1)} cm'),
-                      const SizedBox(height: 12),
-                    ],
-                    // Peso
-                    _buildDetailRow('Peso unitario:', '${item.weight.toStringAsFixed(1)} kg'),
-                    _buildDetailRow('Peso total:', '${item.totalWeight.toStringAsFixed(1)} kg'),
-                  ],
                 ),
-              ),
-          ],
-        ),
+                const SizedBox(width: 8),
+                if (item.isFragile)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: rcColor5,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'Frágil',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: rcWhite,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                if (item.quantity > 1)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: rcColor2,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'X${item.quantity}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: rcColor6,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

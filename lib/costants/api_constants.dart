@@ -25,4 +25,19 @@ class ApiConstants {
   // --------------------------
   static String vehicleById(int vehicleId) => '$baseUrl/fleet/vehicles/$vehicleId';
   static String companyVehicles(int companyId) => '$baseUrl/fleet/companies/$companyId/vehicles';
+
+  // --------------------------
+  // Requests endpoints
+  // --------------------------
+  static String get createRequestEndpoint => '$baseUrl/requests/create-request';
+  
+  // --------------------------
+  // Geo endpoints
+  // --------------------------
+  static String get geoCatalogEndpoint => '$baseUrl/geo/catalog';
+  
+  // --------------------------
+  // Media endpoints
+  // --------------------------
+  static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
 }

@@ -8,7 +8,8 @@ class RequestItem {
   final double weight; // kg
   final int quantity;
   final bool isFragile;
-  final String? imagePath;
+  final String? imagePath; // Deprecated: usar imagePaths
+  final List<String>? imagePaths; // Lista de rutas de imágenes
 
   const RequestItem({
     required this.id,
@@ -20,6 +21,7 @@ class RequestItem {
     required this.quantity,
     this.isFragile = false,
     this.imagePath,
+    this.imagePaths,
   });
 
   RequestItem copyWith({
@@ -32,6 +34,7 @@ class RequestItem {
     int? quantity,
     bool? isFragile,
     String? imagePath,
+    List<String>? imagePaths,
   }) {
     return RequestItem(
       id: id ?? this.id,
@@ -43,10 +46,19 @@ class RequestItem {
       quantity: quantity ?? this.quantity,
       isFragile: isFragile ?? this.isFragile,
       imagePath: imagePath ?? this.imagePath,
+      imagePaths: imagePaths ?? this.imagePaths,
     );
   }
 
   double get totalWeight => weight * quantity;
+  
+  // Getter para compatibilidad: retorna la primera imagen si existe
+  String? get firstImagePath {
+    if (imagePaths != null && imagePaths!.isNotEmpty) {
+      return imagePaths!.first;
+    }
+    return imagePath;
+  }
 }
 
 

@@ -29,7 +29,7 @@ class _AddItemDialogState extends State<AddItemDialog> {
   final _quantityController = TextEditingController();
   
   bool _isFragile = false;
-  String? _imagePath;
+  List<String> _imagePaths = [];
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -44,7 +44,7 @@ class _AddItemDialogState extends State<AddItemDialog> {
       _weightController.text = item.weight.toString();
       _quantityController.text = item.quantity.toString();
       _isFragile = item.isFragile;
-      _imagePath = item.imagePath;
+      _imagePaths = item.imagePaths ?? (item.imagePath != null ? [item.imagePath!] : []);
     } else {
       _quantityController.text = '1';
     }
@@ -65,9 +65,9 @@ class _AddItemDialogState extends State<AddItemDialog> {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CameraCapturePage(
-          onImageCaptured: (imagePath) {
+          onImagesCaptured: (imagePaths) {
             setState(() {
-              _imagePath = imagePath;
+              _imagePaths = imagePaths;
             });
           },
         ),
@@ -101,7 +101,8 @@ class _AddItemDialogState extends State<AddItemDialog> {
       weight: double.parse(_weightController.text),
       quantity: int.tryParse(_quantityController.text) ?? 1,
       isFragile: _isFragile,
-      imagePath: _imagePath,
+      imagePaths: _imagePaths.isNotEmpty ? _imagePaths : null,
+      imagePath: _imagePaths.isNotEmpty ? _imagePaths.first : null, // Para compatibilidad
     );
 
     widget.onSave(item);
@@ -189,11 +190,11 @@ class _AddItemDialogState extends State<AddItemDialog> {
                     ),
                     child: Stack(
                       children: [
-                        if (_imagePath != null)
+                        if (_imagePaths.isNotEmpty)
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.file(
-                              File(_imagePath!),
+                              File(_imagePaths.first),
                               fit: BoxFit.cover,
                               width: double.infinity,
                               height: 150,
@@ -220,8 +221,40 @@ class _AddItemDialogState extends State<AddItemDialog> {
                               ],
                             ),
                           ),
+                        // Indicador de múltiples imágenes
+                        if (_imagePaths.length > 1)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: rcColor4.withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.photo_library,
+                                    size: 14,
+                                    color: rcWhite,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_imagePaths.length}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: rcWhite,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         // Borde punteado
-                        if (_imagePath == null)
+                        if (_imagePaths.isEmpty)
                           CustomPaint(
                             size: Size.infinite,
                             painter: _DashedBorderPainter(

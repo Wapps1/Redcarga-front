@@ -181,21 +181,21 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
                       child: CircularProgressIndicator(),
                     )
                   : SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Nombre
-                          _buildNameField(),
-                          const SizedBox(height: 20),
-                          // Origen
-                          _buildSectionTitle('Origen'),
-                          const SizedBox(height: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Nombre
+                    _buildNameField(),
+                    const SizedBox(height: 20),
+                    // Origen
+                    _buildSectionTitle('Origen'),
+                    const SizedBox(height: 12),
                           _buildLocationFields(isOrigin: true),
-                          const SizedBox(height: 20),
-                          // Destino
-                          _buildSectionTitle('Destino'),
-                          const SizedBox(height: 12),
+                    const SizedBox(height: 20),
+                    // Destino
+                    _buildSectionTitle('Destino'),
+                    const SizedBox(height: 12),
                           _buildLocationFields(isOrigin: false),
                     const SizedBox(height: 8),
                     _buildNote(),

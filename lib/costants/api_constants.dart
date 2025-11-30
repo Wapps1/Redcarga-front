@@ -40,4 +40,9 @@ class ApiConstants {
   // Media endpoints
   // --------------------------
   static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
+  
+  // --------------------------
+  // Dimensions estimation endpoints
+  // --------------------------
+  static String get estimateDimensionsEndpoint => '$baseUrl/requests/dimensions/:estimate';
 }

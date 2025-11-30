@@ -219,9 +219,9 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
       if (mounted) {
         // Esperar un momento para que el usuario vea el mensaje de éxito
         await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted) {
+      if (mounted) {
           // Regresar al main (primera pantalla en el stack)
-          Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).popUntil((route) => route.isFirst);
         }
       }
     } catch (e) {
@@ -488,30 +488,30 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
             width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: rcColor6.withOpacity(0.7),
-              ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: rcColor6.withOpacity(0.7),
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: rcColor6,
-              ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: rcColor6,
             ),
           ),
-        ],
+        ),
+      ],
       ),
     );
   }
@@ -541,73 +541,73 @@ class _RequestSummaryPageState extends State<RequestSummaryPage> {
 
   Widget _buildItemCard(RequestItem item) {
     return Container(
-      decoration: BoxDecoration(
-        color: rcWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: rcColor4.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          // Nombre y tags
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  item.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: rcColor6,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (item.isFragile)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: rcColor5,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Frágil',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: rcWhite,
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                if (item.quantity > 1)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: rcColor2,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'X${item.quantity}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: rcColor6,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+        decoration: BoxDecoration(
+          color: rcWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: rcColor4.withOpacity(0.3),
+            width: 1,
           ),
-        ],
+        ),
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // Nombre y tags
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          item.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: rcColor6,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (item.isFragile)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: rcColor5,
+                      borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Frágil',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: rcWhite,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        if (item.quantity > 1)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: rcColor2,
+                      borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'X${item.quantity}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: rcColor6,
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+          ],
       ),
     );
   }

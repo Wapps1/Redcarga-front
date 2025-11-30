@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme.dart';
 import '../../domain/models/request_item.dart';
 import '../pages/camera_capture_page.dart';
+import '../../data/dimensions_service.dart';
 
 class AddItemDialog extends StatefulWidget {
   final RequestItem? item;
@@ -31,6 +32,9 @@ class _AddItemDialogState extends State<AddItemDialog> {
   bool _isFragile = false;
   List<String> _imagePaths = [];
   final ImagePicker _picker = ImagePicker();
+  final DimensionsService _dimensionsService = DimensionsService();
+  bool _isEstimatingDimensions = false;
+  bool _dimensionsServiceAvailable = true; // Flag para saber si el servicio está disponible
 
   @override
   void initState() {
@@ -73,6 +77,107 @@ class _AddItemDialogState extends State<AddItemDialog> {
         ),
       ),
     );
+  }
+
+  Future<void> _estimateDimensions() async {
+    if (_imagePaths.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Se necesitan al menos 2 fotos (frontal y lateral) para estimar dimensiones'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isEstimatingDimensions = true;
+    });
+
+    try {
+      // Usar la primera foto como frontal (top_photo) y la segunda como lateral (side_photo)
+      final topPhotoPath = _imagePaths[0];
+      final sidePhotoPath = _imagePaths[1];
+
+      final estimate = await _dimensionsService.estimateDimensions(
+        topPhotoPath: topPhotoPath,
+        sidePhotoPath: sidePhotoPath,
+        markerSizeMm: 100.0, // Tamaño del marcador por defecto
+      );
+
+      setState(() {
+        _widthController.text = estimate.widthCm.toStringAsFixed(2);
+        _heightController.text = estimate.heightCm.toStringAsFixed(2);
+        _lengthController.text = estimate.lengthCm.toStringAsFixed(2);
+        _isEstimatingDimensions = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Dimensiones estimadas: ${estimate.widthCm.toStringAsFixed(2)}cm x ${estimate.lengthCm.toStringAsFixed(2)}cm x ${estimate.heightCm.toStringAsFixed(2)}cm',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isEstimatingDimensions = false;
+      });
+
+      // Mostrar un diálogo más informativo en lugar de solo un SnackBar
+      final errorMessage = e.toString();
+      final isServerError = errorMessage.contains('500') || 
+                           errorMessage.contains('No static resource') ||
+                           errorMessage.contains('endpoint podría no estar disponible') ||
+                           errorMessage.contains('404');
+
+      if (isServerError) {
+        // Marcar el servicio como no disponible y ocultar el botón
+        setState(() {
+          _dimensionsServiceAvailable = false;
+        });
+
+        // Mostrar diálogo informativo para errores del servidor
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text(
+                'Servicio no disponible',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: rcColor6,
+                ),
+              ),
+              content: const Text(
+                'El servicio de estimación de dimensiones no está disponible en este momento. '
+                'Por favor, ingresa las dimensiones manualmente en los campos correspondientes.',
+                style: TextStyle(color: rcColor6),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Entendido',
+                    style: TextStyle(color: rcColor4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        // Mostrar SnackBar para otros errores (red, conexión, etc.)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al estimar dimensiones: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   void _save() {
@@ -283,6 +388,43 @@ class _AddItemDialogState extends State<AddItemDialog> {
                     ),
                   ],
                 ),
+                // Botón de autocompletar medidas (solo si hay 2 o más fotos y el servicio está disponible)
+                if (_imagePaths.length >= 2 && _dimensionsServiceAvailable) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isEstimatingDimensions ? null : _estimateDimensions,
+                      icon: _isEstimatingDimensions
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(rcColor4),
+                              ),
+                            )
+                          : const Icon(Icons.auto_awesome, color: rcColor4),
+                      label: Text(
+                        _isEstimatingDimensions
+                            ? 'Estimando dimensiones...'
+                            : 'Autocompletar medidas',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: rcColor4,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: rcColor4, width: 2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 // Peso
                 Row(

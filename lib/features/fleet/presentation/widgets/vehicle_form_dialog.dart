@@ -15,9 +15,9 @@ class VehicleFormDialog extends StatefulWidget {
 }
 
 class _VehicleFormDialogState extends State<VehicleFormDialog> {
+  final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _plateCtrl = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
   bool _submitted = false;
 
   @override
@@ -41,86 +41,190 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<VehiclesBloc, VehiclesState>(
-      listenWhen: (p, c) => p.creating != c.creating || p.message != c.message,
-      listener: (context, state) {
-        if (_submitted && !state.creating && state.message == null) {
-          _submitted = false;
-          final messenger = ScaffoldMessenger.maybeOf(context);
-          Navigator.of(context).pop();
-          messenger?.showSnackBar(
-            const SnackBar(content: Text('Flota creada correctamente')),
-          );
-        } else if (state.message != null && !state.creating) {
-          _submitted = false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message!)),
-          );
-        }
-      },
-      builder: (context, state) {
-        return AlertDialog(
-          backgroundColor: rcColor1,
-          title: const Text(
-            'Crear Flota',
-            style: TextStyle(color: rcColor6, fontWeight: FontWeight.w700),
-          ),
-          content: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre',
-                    filled: true,
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Ingresa el nombre' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _plateCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Placa',
-                    filled: true,
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Ingresa la placa' : null,
-                ),
-              ],
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: BlocConsumer<VehiclesBloc, VehiclesState>(
+        listener: (context, state) {
+          if (_submitted && !state.creating && state.message == null) {
+            _submitted = false;
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Flota creada correctamente')),
+            );
+          } else if (state.message != null && !state.creating) {
+            _submitted = false;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message!)),
+            );
+          }
+        },
+        builder: (context, state) {
+          final isLoading = state.creating;
+
+          return Container(
+            padding:
+                const EdgeInsets.only(left: 28, right: 28, top: 32, bottom: 24),
+            decoration: BoxDecoration(
+              color: rcColor1,
+              borderRadius: BorderRadius.circular(32),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: state.creating ? null : () => Navigator.of(context).pop(),
-              child: const Text('Cancelar', style: TextStyle(color: rcColor6)),
-            ),
-            ElevatedButton(
-              onPressed: state.creating ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: rcColor4,
-                foregroundColor: rcWhite,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: state.creating
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(rcWhite),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(
+                    child: Text(
+                      'Crear Flota',
+                      style: TextStyle(
+                        color: rcColor6,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
                       ),
-                    )
-                  : const Text('Crear'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Nombre',
+                    style: TextStyle(
+                      color: rcColor6,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _RoundedField(
+                    controller: _nameCtrl,
+                    hintText: 'Nombre',
+                    validator: (value) =>
+                        (value?.trim().isEmpty ?? true) ? 'Ingresa un nombre' : null,
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Placa',
+                    style: TextStyle(
+                      color: rcColor6,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _RoundedField(
+                    controller: _plateCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    hintText: 'Placa',
+                    validator: (value) =>
+                        (value?.trim().isEmpty ?? true) ? 'Ingresa la placa' : null,
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isLoading ? null : () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: rcColor4, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(36),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text(
+                            'Cancelar',
+                            style: TextStyle(
+                              color: rcColor4,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: isLoading ? null : _submit,
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [rcColor4, rcColor5],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(36),
+                            ),
+                            alignment: Alignment.center,
+                            child: isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation(rcWhite),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Crear',
+                                    style: TextStyle(
+                                      color: rcWhite,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        );
-      },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RoundedField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hintText;
+  final FormFieldValidator<String>? validator;
+  final TextCapitalization textCapitalization;
+
+  const _RoundedField({
+    required this.controller,
+    required this.hintText,
+    this.validator,
+    this.textCapitalization = TextCapitalization.none,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      textCapitalization: textCapitalization,
+      decoration: InputDecoration(
+        hintText: hintText,
+        filled: true,
+        fillColor: rcWhite,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: rcColor8.withOpacity(0.3)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: rcColor8.withOpacity(0.3)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: const BorderSide(color: rcColor4, width: 1.4),
+        ),
+      ),
     );
   }
 }

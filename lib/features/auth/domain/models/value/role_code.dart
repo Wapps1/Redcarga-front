@@ -6,3 +6,4 @@ enum RoleCode {
   String get value => name.toUpperCase();
 }
 
+

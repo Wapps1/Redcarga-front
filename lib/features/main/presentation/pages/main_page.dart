@@ -7,6 +7,8 @@ import 'package:red_carga/features/customers/presentation/pages/customer_profile
 import 'package:red_carga/features/drivers/presentation/pages/driver_home_page.dart';
 import 'package:red_carga/features/drivers/presentation/pages/driver_map_page.dart';
 import 'package:red_carga/features/drivers/presentation/pages/driver_profile_page.dart';
+import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
+import 'package:red_carga/features/requests/presentation/pages/requests_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
 import '../widgets/driver_bottom_bar.dart';
@@ -35,7 +37,7 @@ class _MainPageState extends State<MainPage> {
   late final List<Widget> _providerPages = <Widget>[
     HomePage(role: widget.role),
     const _Stub('Rutas'),
-    const _Stub('Documentos'),
+    RequestsPage(role: widget.role),
     const ChatsPage(),
     const ProviderProfilePage(),
   ];
@@ -51,8 +53,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   void _onCreatePressed() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Crear nueva solicitud')),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => RequestsPage(role: widget.role),
+      ),
     );
   }
 

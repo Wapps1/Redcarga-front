@@ -8,3 +8,4 @@ abstract class AuthRemoteRepository {
   Future<AppSession> login(AppLoginRequest request);
 }
 
+

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 import 'package:red_carga/core/theme.dart';
+import 'package:red_carga/features/fleet/presentation/pages/drivers_page.dart';
 
 class HomePage extends StatelessWidget {
   final UserRole role;
-  
+
   const HomePage({
     super.key,
     required this.role,
@@ -13,7 +14,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCustomer = role == UserRole.customer;
-    
+
     return Scaffold(
       backgroundColor: rcColor1,
       body: SafeArea(
@@ -36,9 +37,9 @@ class HomePage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     '¡Bienvenido!',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: rcColor6,
@@ -51,11 +52,11 @@ class HomePage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
-              
+
               // Últimos tratos activos (común para ambos)
               _buildLastActiveDeals(),
               const SizedBox(height: 24),
-              
+
               // Contenido específico por rol
               if (isCustomer) ...[
                 _buildCustomerRoutes(context),
@@ -135,13 +136,13 @@ class HomePage extends StatelessWidget {
   Widget _buildDealCard(String company, String request) {
     return Container(
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
           colors: [rcColor4, rcColor5],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
       child: Center(
         child: Text(
@@ -185,11 +186,11 @@ class HomePage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: rcColor4.withOpacity(0.5),
-                  width: 1.5,
-                ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: rcColor4.withOpacity(0.5),
+                width: 1.5,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,51 +214,10 @@ class HomePage extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.location_on, color: rcColor5, size: 20),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  'La Molina, Lima',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: rcColor6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.location_on, color: rcColor4, size: 20),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  'La Victoria, Chiclayo',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: rcColor6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    const Expanded(
+                      child: _RouteStops(),
                     ),
                     const SizedBox(width: 12),
-                    // Mapa estilizado (como mapa plegado) - alineado arriba
                     Align(
                       alignment: Alignment.topCenter,
                       child: Container(
@@ -266,27 +226,16 @@ class HomePage extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: rcColor7,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: rcColor8.withOpacity(0.2), width: 1),
+                          border:
+                              Border.all(color: rcColor8.withOpacity(0.2), width: 1),
                         ),
                         child: Stack(
-                          children: [
-                            // Simulación de mapa con líneas
-                            CustomPaint(
-                              painter: _MapPainter(),
-                              child: Container(),
-                            ),
-                            // Pin de ubicación en el punto de destino
+                          children: const [
+                            CustomPaint(painter: _MapPainter()),
                             Positioned(
-                              left: 90, // 75% del ancho (120 * 0.75)
-                              top: 67.5,  // 75% del alto (90 * 0.75)
-                              child: Transform.translate(
-                                offset: const Offset(-12, -24),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: rcColor5,
-                                  size: 20,
-                                ),
-                              ),
+                              left: 90,
+                              top: 67.5,
+                              child: Icon(Icons.location_on, color: rcColor5, size: 20),
                             ),
                           ],
                         ),
@@ -301,13 +250,13 @@ class HomePage extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
                 colors: [rcColor4, rcColor5],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
             child: const Center(
               child: Text(
@@ -344,8 +293,11 @@ class HomePage extends StatelessWidget {
               child: _buildActionButton(
                 'Administrar\nRutas',
                 Icons.route,
-                rcColor2.withOpacity(0.4), // Naranja claro
-                rcColor4, // Texto naranja
+                rcColor2.withOpacity(0.4),
+                rcColor4,
+                onTap: () {
+                  // TODO: navegar a Rutas cuando esté lista
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -353,8 +305,14 @@ class HomePage extends StatelessWidget {
               child: _buildActionButton(
                 'Administrar\nconductores',
                 Icons.person,
-                rcColor3.withOpacity(0.4), // Rosa claro
-                rcColor4, // Texto rosa
+                rcColor3.withOpacity(0.4),
+                rcColor4,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DriversPage()),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -362,8 +320,11 @@ class HomePage extends StatelessWidget {
               child: _buildActionButton(
                 'Administrar\nFlotas',
                 Icons.local_shipping,
-                rcColor3.withOpacity(0.4), // Rosa claro
-                rcColor5, // Texto rosa
+                rcColor3.withOpacity(0.4),
+                rcColor5,
+                onTap: () {
+                  // TODO: navegar a Flotas cuando esté lista
+                },
               ),
             ),
           ],
@@ -372,28 +333,37 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(String label, IconData icon, Color backgroundColor, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: textColor, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: textColor,
+  Widget _buildActionButton(
+    String label,
+    IconData icon,
+    Color backgroundColor,
+    Color textColor, {
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: textColor, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -423,12 +393,12 @@ class HomePage extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: const [
               Row(
                 children: [
-                  const Icon(Icons.location_on, color: rcColor5, size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
+                  Icon(Icons.location_on, color: rcColor5, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
                     child: Text(
                       'La Molina, Lima',
                       style: TextStyle(
@@ -440,12 +410,12 @@ class HomePage extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.location_on, color: rcColor4, size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
+                  Icon(Icons.location_on, color: rcColor4, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
                     child: Text(
                       'La Victoria, Chiclayo',
                       style: TextStyle(
@@ -464,13 +434,13 @@ class HomePage extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
               colors: [rcColor4, rcColor5],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.all(Radius.circular(12)),
           ),
           child: const Center(
             child: Text(
@@ -500,6 +470,7 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        // Card demo (opcional)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -515,50 +486,44 @@ class HomePage extends StatelessWidget {
               Icon(Icons.person, color: rcColor5, size: 24),
               SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Juan Pérez',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: rcColor6,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'DNI: 123456789',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: rcColor8,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Registra y gestiona a tus conductores',
+                  style: TextStyle(fontSize: 14, color: rcColor6),
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [rcColor4, rcColor5],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+
+        // Botón que navega a DriversPage
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DriversPage()),
+            );
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [rcColor4, rcColor5],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Center(
-            child: Text(
-              'Ver conductores',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: rcWhite,
+            child: const Center(
+              child: Text(
+                'Ver conductores',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: rcWhite,
+                ),
               ),
             ),
           ),
@@ -595,26 +560,9 @@ class HomePage extends StatelessWidget {
               Icon(Icons.local_shipping, color: rcColor5, size: 24),
               SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Camión1',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: rcColor6,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'PLACA: 123-BTW',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: rcColor8,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Administra tus vehículos y documentos',
+                  style: TextStyle(fontSize: 14, color: rcColor6),
                 ),
               ),
             ],
@@ -625,17 +573,65 @@ class HomePage extends StatelessWidget {
   }
 }
 
+class _RouteStops extends StatelessWidget {
+  const _RouteStops();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.location_on, color: rcColor5, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'La Molina, Lima',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: rcColor6,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.location_on, color: rcColor4, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'La Victoria, Chiclayo',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: rcColor6,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 // Custom painter para el mapa estilizado
 class _MapPainter extends CustomPainter {
+  const _MapPainter();
+
   @override
   void paint(Canvas canvas, Size size) {
-    // Fondo del mapa con líneas de calles simuladas
     final streetPaint = Paint()
       ..color = rcColor8.withOpacity(0.15)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
-    // Líneas horizontales (calles)
     for (double y = size.height * 0.2; y < size.height; y += size.height * 0.25) {
       canvas.drawLine(
         Offset(size.width * 0.1, y),
@@ -644,7 +640,6 @@ class _MapPainter extends CustomPainter {
       );
     }
 
-    // Líneas verticales (calles)
     for (double x = size.width * 0.2; x < size.width; x += size.width * 0.3) {
       canvas.drawLine(
         Offset(x, size.height * 0.1),
@@ -653,24 +648,22 @@ class _MapPainter extends CustomPainter {
       );
     }
 
-    // Ruta principal (línea curva)
     final routePaint = Paint()
       ..color = rcColor5.withOpacity(0.6)
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final routePath = Path();
-    routePath.moveTo(size.width * 0.15, size.height * 0.2);
-    routePath.quadraticBezierTo(
-      size.width * 0.4,
-      size.height * 0.4,
-      size.width * 0.75,
-      size.height * 0.75,
-    );
+    final routePath = Path()
+      ..moveTo(size.width * 0.15, size.height * 0.2)
+      ..quadraticBezierTo(
+        size.width * 0.4,
+        size.height * 0.4,
+        size.width * 0.75,
+        size.height * 0.75,
+      );
     canvas.drawPath(routePath, routePaint);
 
-    // Puntos de inicio y fin
     final pointPaint = Paint()
       ..color = rcColor5
       ..style = PaintingStyle.fill;

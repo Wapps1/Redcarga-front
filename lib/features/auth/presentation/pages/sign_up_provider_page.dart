@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/widgets/rc_background.dart';
 import '../../../../core/widgets/rc_back_button.dart';
 import '../../../../core/widgets/rc_button.dart';
@@ -101,10 +102,10 @@ class SignUpProviderPage extends StatelessWidget {
                               children: [
                                 // Icono solo en pasos 1 y 2
                                 if (state.step != 3 && state.step != 4) ...[
-                                  const Icon(
-                                    Icons.local_shipping,
-                                    size: 100,
-                                    color: rcColor5,
+                                  SvgPicture.asset(
+                                    'assets/icons/truck_icon.svg',
+                                    width: 110,
+                                    height: 110,
                                   ),
                                   const SizedBox(height: 24),
                                 ],

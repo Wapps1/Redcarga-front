@@ -8,6 +8,9 @@ class CotizacionCard extends StatelessWidget {
   final String precio;
   final VoidCallback? onDetalles;
   final VoidCallback? onChat;
+  final VoidCallback? onVerCotizacion; // Para el tab "TODAS"
+  final Color? backgroundColor; // Para el tab "TODAS"
+  final bool isTodasTab; // Indica si está en el tab "TODAS"
 
   const CotizacionCard({
     super.key,
@@ -17,6 +20,9 @@ class CotizacionCard extends StatelessWidget {
     required this.precio,
     this.onDetalles,
     this.onChat,
+    this.onVerCotizacion,
+    this.backgroundColor,
+    this.isTodasTab = false,
   });
 
   @override
@@ -26,6 +32,7 @@ class CotizacionCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
+      color: backgroundColor, // Usar el color de fondo personalizado si está en "TODAS"
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
@@ -92,30 +99,70 @@ class CotizacionCard extends StatelessWidget {
             const SizedBox(height: 16),
             
             // Botones
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onDetalles,
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: rcColor8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+            if (isTodasTab && onVerCotizacion != null) ...[
+              // Botón "Ver cotización" para el tab "TODAS"
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      colorScheme.primary,
+                      colorScheme.secondary,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onVerCotizacion,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: Text(
-                      'Detalles',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: rcColor6,
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Ver cotización',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: rcWhite,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
-                if (onChat != null) ...[
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
+              ),
+            ] else ...[
+              // Botones para otros tabs: "Detalles" y "Ir al chat"
+              Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: onDetalles,
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: rcColor8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: Text(
+                            'Detalles',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: rcColor6,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (onChat != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
@@ -146,10 +193,10 @@ class CotizacionCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
+              ),
+            ],
           ],
         ),
       ),

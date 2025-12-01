@@ -5,11 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme.dart';
 
 class CameraCapturePage extends StatefulWidget {
-  final Function(String imagePath) onImageCaptured;
+  final Function(List<String> imagePaths) onImagesCaptured;
 
   const CameraCapturePage({
     super.key,
-    required this.onImageCaptured,
+    required this.onImagesCaptured,
   });
 
   @override
@@ -20,10 +20,14 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
-  bool _is2DMode = true;
-  String? _capturedImagePath;
+  bool _is2DMode = true; // true = frente (cuadrado), false = costado (cubo)
+  String? _frontImagePath; // Foto de frente
+  String? _sideImagePath; // Foto de costado
   bool _useImagePicker = false;
   final ImagePicker _imagePicker = ImagePicker();
+  
+  // Determinar qué foto estamos capturando
+  String? get _currentImagePath => _is2DMode ? _frontImagePath : _sideImagePath;
 
   @override
   void initState() {
@@ -78,7 +82,11 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
         );
         if (image != null && mounted) {
           setState(() {
-            _capturedImagePath = image.path;
+            if (_is2DMode) {
+              _frontImagePath = image.path;
+            } else {
+              _sideImagePath = image.path;
+            }
           });
         }
       } catch (e) {
@@ -98,7 +106,11 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
       final XFile image = await _controller!.takePicture();
       if (mounted) {
         setState(() {
-          _capturedImagePath = image.path;
+          if (_is2DMode) {
+            _frontImagePath = image.path;
+          } else {
+            _sideImagePath = image.path;
+          }
         });
       }
     } catch (e) {
@@ -111,7 +123,11 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
           );
           if (image != null) {
             setState(() {
-              _capturedImagePath = image.path;
+              if (_is2DMode) {
+                _frontImagePath = image.path;
+              } else {
+                _sideImagePath = image.path;
+              }
             });
           }
         } catch (e2) {
@@ -126,16 +142,62 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
     }
   }
 
+  Future<void> _pickFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (image != null && mounted) {
+        setState(() {
+          if (_is2DMode) {
+            _frontImagePath = image.path;
+          } else {
+            _sideImagePath = image.path;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar imagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _retake() {
     setState(() {
-      _capturedImagePath = null;
+      if (_is2DMode) {
+        _frontImagePath = null;
+      } else {
+        _sideImagePath = null;
+      }
     });
   }
 
   void _done() {
-    if (_capturedImagePath != null) {
-      widget.onImageCaptured(_capturedImagePath!);
+    final List<String> images = [];
+    if (_frontImagePath != null) {
+      images.add(_frontImagePath!);
+    }
+    if (_sideImagePath != null) {
+      images.add(_sideImagePath!);
+    }
+    
+    if (images.isNotEmpty) {
+      widget.onImagesCaptured(images);
       Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor captura al menos una foto'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
@@ -152,14 +214,14 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
       body: Stack(
         children: [
           // Vista previa de la cámara de fondo
-          if (!_useImagePicker && _isInitialized && _controller != null && _capturedImagePath == null)
+          if (!_useImagePicker && _isInitialized && _controller != null && _currentImagePath == null)
             Positioned.fill(
               child: CameraPreview(_controller!),
             )
-          else if (_capturedImagePath != null)
+          else if (_currentImagePath != null)
             Positioned.fill(
               child: Image.file(
-                File(_capturedImagePath!),
+                File(_currentImagePath!),
                 fit: BoxFit.cover,
               ),
             )
@@ -237,14 +299,28 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                 // Título
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                  child: Text(
-                    'Captura al objeto de frente',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    children: [
+                      Text(
+                        _is2DMode ? 'Captura al objeto de frente' : 'Captura al objeto de costado',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      // Indicadores de progreso
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildProgressIndicator('Frente', _frontImagePath != null),
+                          const SizedBox(width: 12),
+                          _buildProgressIndicator('Costado', _sideImagePath != null),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 const Spacer(),
@@ -262,9 +338,9 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child: _capturedImagePath != null
+                      child: _currentImagePath != null
                           ? Image.file(
-                              File(_capturedImagePath!),
+                              File(_currentImagePath!),
                               fit: BoxFit.cover,
                             )
                           : Container(
@@ -280,7 +356,7 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // Modo 2D
+                      // Modo 2D (Frente)
                       GestureDetector(
                         onTap: () {
                           setState(() {
@@ -296,13 +372,15 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.6),
-                              width: 2,
+                              color: _frontImagePath != null
+                                  ? Colors.green
+                                  : Colors.white.withOpacity(0.6),
+                              width: _frontImagePath != null ? 3 : 2,
                             ),
                           ),
                           child: Icon(
                             Icons.crop_square,
-                            color: Colors.white,
+                            color: _frontImagePath != null ? Colors.green : Colors.white,
                             size: 28,
                           ),
                         ),
@@ -330,7 +408,7 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                           ),
                         ),
                       ),
-                      // Modo 3D
+                      // Modo 3D (Costado)
                       GestureDetector(
                         onTap: () {
                           setState(() {
@@ -346,13 +424,15 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.6),
-                              width: 2,
+                              color: _sideImagePath != null
+                                  ? Colors.green
+                                  : Colors.white.withOpacity(0.6),
+                              width: _sideImagePath != null ? 3 : 2,
                             ),
                           ),
                           child: Icon(
                             Icons.view_in_ar,
-                            color: Colors.white,
+                            color: _sideImagePath != null ? Colors.green : Colors.white,
                             size: 28,
                           ),
                         ),
@@ -391,23 +471,47 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
+                      // Botón Galería
+                      GestureDetector(
+                        onTap: _pickFromGallery,
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.6),
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.photo_library,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       // Botón Listo
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: _capturedImagePath != null ? _done : null,
+                          onPressed: (_frontImagePath != null || _sideImagePath != null) ? _done : null,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: _capturedImagePath != null
+                            backgroundColor: (_frontImagePath != null || _sideImagePath != null)
                                 ? Colors.white.withOpacity(0.2)
                                 : Colors.grey.withOpacity(0.3),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Listo',
-                            style: TextStyle(
+                          child: Text(
+                            _frontImagePath != null && _sideImagePath != null
+                                ? 'Listo'
+                                : 'Continuar',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
@@ -424,6 +528,40 @@ class _CameraCapturePageState extends State<CameraCapturePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildProgressIndicator(String label, bool isCompleted) {
+    return Column(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isCompleted ? Colors.green : Colors.white.withOpacity(0.3),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.6),
+              width: 1,
+            ),
+          ),
+          child: isCompleted
+              ? const Icon(
+                  Icons.check,
+                  size: 8,
+                  color: Colors.white,
+                )
+              : null,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.white.withOpacity(0.8),
+          ),
+        ),
+      ],
     );
   }
 }

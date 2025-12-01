@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/fleet/presentation/pages/drivers_page.dart';
+import 'package:red_carga/features/fleet/presentation/pages/drivers_page.dart';
+import 'package:red_carga/features/fleet/presentation/pages/vehicles_page.dart';
 
 class HomePage extends StatelessWidget {
   final UserRole role;
@@ -323,7 +325,10 @@ class HomePage extends StatelessWidget {
                 rcColor3.withOpacity(0.4),
                 rcColor5,
                 onTap: () {
-                  // TODO: navegar a Flotas cuando esté lista
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const VehiclesPage()),
+                  );
                 },
               ),
             ),
@@ -566,6 +571,38 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VehiclesPage()),
+            );
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [rcColor4, rcColor5],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            child: const Center(
+              child: Text(
+                'Ver flotas',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: rcWhite,
+                ),
+              ),
+            ),
           ),
         ),
       ],

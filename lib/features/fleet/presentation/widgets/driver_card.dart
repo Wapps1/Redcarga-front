@@ -28,7 +28,7 @@ class DriverCard extends StatelessWidget {
             // Avatar
             CircleAvatar(
               radius: 24,
-              backgroundColor: rcColor2.withOpacity(0.6),
+              backgroundColor: const Color.fromARGB(255, 3, 2, 1).withOpacity(0.6),
               child: const Icon(Icons.person, color: rcColor4),
             ),
             const SizedBox(width: 12),
@@ -43,7 +43,7 @@ class DriverCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '${driver.firstName} ${driver.lastName}',
+                          driver.fullName, // 👈 ahora usamos fullName
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -54,8 +54,10 @@ class DriverCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: (driver.active ? rcColor2 : rcColor7)
                               .withOpacity(0.6),
@@ -110,14 +112,14 @@ class DriverCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
 
-                  // Email
+                  // Documento
                   Row(
                     children: [
-                      const Icon(Icons.email_outlined, size: 16, color: rcColor8),
+                      const Icon(Icons.badge_outlined, size: 16, color: rcColor8),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          driver.email,
+                          'Doc: ${driver.docNumber}',
                           style: const TextStyle(fontSize: 13, color: rcColor6),
                           overflow: TextOverflow.ellipsis,
                         ),

@@ -1,4 +1,3 @@
-// lib/features/fleet/presentation/pages/drivers_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,20 +5,21 @@ import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/core/session/auth_bloc.dart';
 import 'package:red_carga/core/session/session_store.dart';
 
+import 'package:red_carga/features/auth/data/di/auth_repositories.dart';
 import 'package:red_carga/features/fleet/data/driver_service.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_bloc.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_event.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_state.dart';
 import 'package:red_carga/features/fleet/presentation/widgets/driver_card.dart';
 import 'package:red_carga/features/fleet/presentation/widgets/driver_form_dialog.dart';
+import 'package:red_carga/features/fleet/data/driver_identity_service.dart';
 
 class DriversPage extends StatelessWidget {
-  final int? companyId; // opcional: si viene, tiene prioridad
+  final int? companyId;
   const DriversPage({super.key, this.companyId});
 
   @override
   Widget build(BuildContext context) {
-    // companyId desde sesión (AuthBloc) si no vino por parámetro
     final sessionCompanyId = context.select<AuthBloc, int?>((bloc) {
       final s = bloc.state;
       return s is AuthSignedIn ? s.session.companyId : null;
@@ -28,7 +28,16 @@ class DriversPage extends StatelessWidget {
     final effectiveCompanyId = companyId ?? sessionCompanyId;
 
     return BlocProvider(
-      create: (_) => DriversBloc(service: DriverService(SessionStore())),
+      create: (_) => DriversBloc(
+        driverService: DriverService(SessionStore()),
+        authRemoteRepository: AuthRepositories.createAuthRemoteRepository(),
+        driverIdentityService: DriverIdentityService(
+          sessionStore: SessionStore(),
+          firebaseTokenProvider: () =>
+              AuthRepositories.createFirebaseAuthRepository()
+                  .getCurrentIdToken(),
+        ),
+      ),
       child: _DriversView(companyId: effectiveCompanyId),
     );
   }
@@ -65,26 +74,18 @@ class _DriversViewState extends State<_DriversView> {
     final id = widget.companyId;
     if (id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registra tu empresa para administrar conductores')),
+        const SnackBar(
+          content: Text('Registra tu empresa para administrar conductores'),
+        ),
       );
       return;
     }
 
     showDialog(
       context: context,
-      builder: (_) => DriverFormDialog(
-        onSubmitted: (firstName, lastName, email, phone, licenseNumber) {
-          context.read<DriversBloc>().add(
-                CreateDriverRequested(
-                  companyId: id,
-                  firstName: firstName,
-                  lastName: lastName,
-                  email: email,
-                  phone: phone,
-                  licenseNumber: licenseNumber,
-                ),
-              );
-        },
+      builder: (_) => BlocProvider.value(
+        value: context.read<DriversBloc>(),
+        child: DriverFormDialog(companyId: id),
       ),
     );
   }
@@ -122,9 +123,13 @@ class _DriversViewState extends State<_DriversView> {
           ? const _CompanyMissingHint()
           : BlocConsumer<DriversBloc, DriversState>(
               listener: (context, state) {
-                if (state.message != null && state.status == DriversStatus.failure) {
+                if (state.message != null &&
+                    state.status == DriversStatus.failure) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(state.message!), backgroundColor: rcColor5),
+                    SnackBar(
+                      content: Text(state.message!),
+                      backgroundColor: rcColor5,
+                    ),
                   );
                 }
               },
@@ -162,11 +167,10 @@ class _DriversViewState extends State<_DriversView> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 12),
                         itemBuilder: (_, i) {
                           final d = items[i];
-                          // onEdit/onDelete aún no están implementados en tu BLoC actual,
-                          // así que los dejamos deshabilitados (null).
                           return DriverCard(
                             driver: d,
                             onEdit: null,
@@ -216,9 +220,11 @@ class _EmptyDrivers extends StatelessWidget {
       children: const [
         Icon(Icons.people_outline, size: 64, color: rcColor8),
         SizedBox(height: 12),
-        Text('No hay conductores registrados', style: TextStyle(color: rcColor6)),
+        Text('No hay conductores registrados',
+            style: TextStyle(color: rcColor6)),
         SizedBox(height: 4),
-        Text('Toca “Agregar” para crear uno nuevo', style: TextStyle(color: rcColor8)),
+        Text('Toca “Agregar” para crear uno nuevo',
+            style: TextStyle(color: rcColor8)),
       ],
     );
   }

@@ -1,12 +1,12 @@
 class AppLoginRequestDto {
   final String platform;
   final String ip;
-  final int? ttlSeconds; // opcional (default en backend: 7200 = 2h)
+  //final int? ttlSeconds; // opcional (default en backend: 7200 = 2h)
 
   AppLoginRequestDto({
     required this.platform,
     required this.ip,
-    this.ttlSeconds,
+    //this.ttlSeconds,
   });
 
   Map<String, dynamic> toJson() {
@@ -14,9 +14,9 @@ class AppLoginRequestDto {
       'platform': platform,
       'ip': ip,
     };
-    if (ttlSeconds != null) {
-      map['ttlSeconds'] = ttlSeconds!;
-    }
+    //if (ttlSeconds != null) {
+    //  map['ttlSeconds'] = ttlSeconds!;
+    //}
     return map;
   }
 }

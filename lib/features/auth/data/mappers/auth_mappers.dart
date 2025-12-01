@@ -43,7 +43,7 @@ extension AppLoginRequestToDto on AppLoginRequest {
     return AppLoginRequestDto(
       platform: platform.value,
       ip: ip,
-      ttlSeconds: ttlSeconds,
+      //ttlSeconds: ttlSeconds,
     );
   }
 }
@@ -59,6 +59,8 @@ extension AppLoginResponseDtoToDomain on AppLoginResponseDto {
           return RoleCode.client;
         case 'PROVIDER':
           return RoleCode.provider;
+        case 'DRIVER':
+          return RoleCode.driver;
         default:
           return RoleCode.client;
       }

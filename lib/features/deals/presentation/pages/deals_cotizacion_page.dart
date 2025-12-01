@@ -2,9 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/presentation/widgets/cotizacion_card.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_view_cotizacion.dart';
+import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
+import 'package:red_carga/features/deals/data/repositories/deals_repository.dart';
+import 'package:red_carga/features/deals/data/models/request_dto.dart';
+import 'package:red_carga/features/deals/data/models/quote_dto.dart';
+import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
+import 'package:intl/intl.dart';
 
 class CotizacionPage extends StatefulWidget {
-  const CotizacionPage({super.key});
+  final int? initialTabIndex; // 0: Todas, 1: En trato, 2: En marcha
+  
+  const CotizacionPage({super.key, this.initialTabIndex});
 
   @override
   State<CotizacionPage> createState() => _CotizacionPageState();
@@ -14,14 +22,145 @@ class _CotizacionPageState extends State<CotizacionPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final colorScheme = MaterialTheme.lightScheme();
+  
+  // Repositorio y servicios
+  late DealsRepository _dealsRepository;
+  
+  // Estados de datos
+  List<RequestDto> _requests = [];
+  RequestDto? _selectedRequest;
+  List<QuoteDto> _quotes = [];
+  Map<int, QuoteDetailDto> _quoteDetails = {};
+  bool _isLoadingRequests = false;
+  bool _isLoadingQuotes = false;
+  String? _errorMessage;
+  
+  // Estado del selector desplegable
+  bool _isRequestDropdownOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTabIndex ?? 0,
+    );
     _tabController.addListener(() {
       setState(() {});
+      // Recargar cotizaciones cuando cambia el tab
+      if (_selectedRequest != null) {
+        _loadQuotes(_selectedRequest!.requestId);
+      }
     });
+    
+    // Inicializar repositorio usando el helper centralizado
+    _dealsRepository = DealsRepositories.createDealsRepository();
+    
+    // Cargar solicitudes
+    _loadRequests();
+  }
+  
+  Future<void> _loadRequests() async {
+    setState(() {
+      _isLoadingRequests = true;
+      _errorMessage = null;
+    });
+    
+    try {
+      final requests = await _dealsRepository.getRequests();
+      setState(() {
+        _requests = requests;
+        if (requests.isNotEmpty && _selectedRequest == null) {
+          _selectedRequest = requests.first;
+          _loadQuotes(requests.first.requestId);
+        }
+        _isLoadingRequests = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al cargar solicitudes: $e';
+        _isLoadingRequests = false;
+      });
+      print('❌ Error loading requests: $e');
+    }
+  }
+  
+  Future<void> _loadQuotes(int requestId) async {
+    setState(() {
+      _isLoadingQuotes = true;
+      _errorMessage = null;
+    });
+    
+    try {
+      // Determinar el estado según el tab activo
+      String? state;
+      switch (_tabController.index) {
+        case 0: // Todas
+          state = 'PENDIENTE';
+          break;
+        case 1: // En trato
+          state = 'TRATO';
+          break;
+        case 2: // En marcha
+          state = 'ACEPTADA';
+          break;
+      }
+      
+      final quotes = await _dealsRepository.getQuotesByRequestId(
+        requestId,
+        state: state,
+      );
+      
+      // Cargar detalles de cada cotización
+      final Map<int, QuoteDetailDto> details = {};
+      for (final quote in quotes) {
+        try {
+          final detail = await _dealsRepository.getQuoteDetail(quote.quoteId);
+          details[quote.quoteId] = detail;
+        } catch (e) {
+          print('⚠️ Error loading quote detail ${quote.quoteId}: $e');
+        }
+      }
+      
+      setState(() {
+        _quotes = quotes;
+        _quoteDetails = details;
+        _isLoadingQuotes = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al cargar cotizaciones: $e';
+        _isLoadingQuotes = false;
+      });
+      print('❌ Error loading quotes: $e');
+    }
+  }
+  
+  void _onRequestSelected(RequestDto? request) {
+    if (request != null && request.requestId != _selectedRequest?.requestId) {
+      setState(() {
+        _selectedRequest = request;
+        _isRequestDropdownOpen = false;
+        _quotes = [];
+        _quoteDetails = {};
+      });
+      _loadQuotes(request.requestId);
+    }
+  }
+  
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('dd/MM/yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+  
+  String _formatPrice(double amount, String currencyCode) {
+    final currencySymbol = currencyCode == 'PEN' ? 's/' : '\$';
+    return '$currencySymbol${amount.toStringAsFixed(2)}';
   }
 
   @override
@@ -141,7 +280,7 @@ class _CotizacionPageState extends State<CotizacionPage>
     );
   }
 
-  void _navigateToDetalles(BuildContext context, String empresaNombre, String solicitudNombre, String precio) {
+  void _navigateToDetalles(BuildContext context, int quoteId, String empresaNombre, String solicitudNombre, String precio) {
     final tabName = _tabController.index == 0 
         ? 'todas' 
         : _tabController.index == 1 
@@ -151,10 +290,8 @@ class _CotizacionPageState extends State<CotizacionPage>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ViewCotizacionPage(
+          quoteId: quoteId,
           tabOrigen: tabName,
-          empresaNombre: empresaNombre,
-          solicitudNombre: solicitudNombre,
-          precio: precio,
         ),
       ),
     );
@@ -212,47 +349,7 @@ class _CotizacionPageState extends State<CotizacionPage>
           
           // Lista de cotizaciones
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
-              children: [
-                CotizacionCard(
-                  empresaNombre: 'Empresa 1',
-                  solicitudNombre: 'Solicitud 1',
-                  calificacion: 3,
-                  precio: 's/1000',
-                  onDetalles: () {
-                    _navigateToDetalles(context, 'Empresa 1', 'Solicitud 1', 's/1000');
-                  },
-                  onChat: _tabController.index == 0 ? null : () {
-                    // TODO: Navegar a chat
-                  },
-                ),
-                CotizacionCard(
-                  empresaNombre: 'Empresa 2',
-                  solicitudNombre: 'Solicitud 1',
-                  calificacion: 4,
-                  precio: 's/1200',
-                  onDetalles: () {
-                    _navigateToDetalles(context, 'Empresa 2', 'Solicitud 1', 's/1200');
-                  },
-                  onChat: _tabController.index == 0 ? null : () {
-                    // TODO: Navegar a chat
-                  },
-                ),
-                CotizacionCard(
-                  empresaNombre: 'Empresa 3',
-                  solicitudNombre: 'Solicitud 1',
-                  calificacion: 5,
-                  precio: 's/900',
-                  onDetalles: () {
-                    _navigateToDetalles(context, 'Empresa 3', 'Solicitud 1', 's/900');
-                  },
-                  onChat: _tabController.index == 0 ? null : () {
-                    // TODO: Navegar a chat
-                  },
-                ),
-              ],
-            ),
+            child: _buildQuotesList(),
           ),
         ],
       ),
@@ -268,29 +365,99 @@ class _CotizacionPageState extends State<CotizacionPage>
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Solicitud 1',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: rcColor6,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isRequestDropdownOpen = !_isRequestDropdownOpen;
+              });
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedRequest?.requestName ?? 'Selecciona una solicitud',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: rcColor6,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              Icon(
-                Icons.keyboard_arrow_down,
-                color: rcColor8,
-              ),
-            ],
+                Icon(
+                  _isRequestDropdownOpen 
+                      ? Icons.keyboard_arrow_up 
+                      : Icons.keyboard_arrow_down,
+                  color: rcColor8,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildSolicitudRow('Día:', '10/10/2025'),
-          const SizedBox(height: 8),
-          _buildSolicitudRow('Origen:', 'La Molina, Lima'),
-          const SizedBox(height: 8),
-          _buildSolicitudRow('Destino:', 'La Victoria, Chiclayo'),
+          if (_isRequestDropdownOpen && _requests.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                color: rcWhite,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: rcColor8),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _requests.length,
+                itemBuilder: (context, index) {
+                  final request = _requests[index];
+                  final isSelected = _selectedRequest?.requestId == request.requestId;
+                  return InkWell(
+                    onTap: () => _onRequestSelected(request),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected ? rcColor1 : rcWhite,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        request.requestName,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isSelected ? rcColor6 : rcColor8,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_selectedRequest != null) ...[
+            const SizedBox(height: 12),
+            _buildSolicitudRow('Día:', _formatDate(_selectedRequest!.createdAt)),
+            const SizedBox(height: 8),
+            _buildSolicitudRow('Origen:', _selectedRequest!.origin.fullAddress),
+            const SizedBox(height: 8),
+            _buildSolicitudRow('Destino:', _selectedRequest!.destination.fullAddress),
+          ] else if (_isLoadingRequests) ...[
+            const SizedBox(height: 12),
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ] else if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.red,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -313,6 +480,114 @@ class _CotizacionPageState extends State<CotizacionPage>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildQuotesList() {
+    if (_selectedRequest == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            'Selecciona una solicitud para ver las cotizaciones',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: rcColor8,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    
+    if (_isLoadingQuotes) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
+    if (_errorMessage != null && _quotes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _errorMessage!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.red,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  if (_selectedRequest != null) {
+                    _loadQuotes(_selectedRequest!.requestId);
+                  }
+                },
+                child: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    if (_quotes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            'No hay cotizaciones disponibles para esta solicitud',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: rcColor8,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    
+    final isTodasTab = _tabController.index == 0;
+    final isOtherTabs = _tabController.index == 1 || _tabController.index == 2; // "EN TRATO" o "EN MARCHA"
+    
+    return ListView(
+      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+      children: _quotes.map((quote) {
+        return CotizacionCard(
+          empresaNombre: 'Empresa ${quote.companyId}',
+          solicitudNombre: _selectedRequest?.requestName ?? '',
+          calificacion: 3, // TODO: Obtener calificación real de la empresa
+          precio: _formatPrice(quote.totalAmount, quote.currencyCode),
+          isTodasTab: isTodasTab,
+          backgroundColor: (isTodasTab || isOtherTabs) ? rcColor1 : null, // Color de fondo para todos los tabs
+          onVerCotizacion: isTodasTab ? () {
+            _navigateToDetalles(
+              context,
+              quote.quoteId,
+              'Empresa ${quote.companyId}',
+              _selectedRequest?.requestName ?? '',
+              _formatPrice(quote.totalAmount, quote.currencyCode),
+            );
+          } : null,
+          onDetalles: isOtherTabs ? () {
+            _navigateToDetalles(
+              context,
+              quote.quoteId,
+              'Empresa ${quote.companyId}',
+              _selectedRequest?.requestName ?? '',
+              _formatPrice(quote.totalAmount, quote.currencyCode),
+            );
+          } : null,
+          onChat: isOtherTabs ? () {
+            // TODO: Navegar a chat
+          } : null,
+        );
+      }).toList(),
     );
   }
 

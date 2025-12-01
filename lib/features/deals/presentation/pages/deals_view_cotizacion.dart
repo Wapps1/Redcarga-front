@@ -1,24 +1,149 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
+import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
+import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
+import 'package:red_carga/features/deals/data/models/request_detail_dto.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
+import 'package:intl/intl.dart';
 
-class ViewCotizacionPage extends StatelessWidget {
+class ViewCotizacionPage extends StatefulWidget {
+  final int quoteId;
   final String tabOrigen; // 'todas', 'en trato', 'en marcha'
-  final String empresaNombre;
-  final String solicitudNombre;
-  final String precio;
 
   const ViewCotizacionPage({
     super.key,
+    required this.quoteId,
     required this.tabOrigen,
-    this.empresaNombre = 'Empresa 1',
-    this.solicitudNombre = 'Solicitud 1',
-    this.precio = 's/1000',
   });
+
+  @override
+  State<ViewCotizacionPage> createState() => _ViewCotizacionPageState();
+}
+
+class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
+  // Repositorio
+  final _dealsRepository = DealsRepositories.createDealsRepository();
+  
+  // Estados de carga
+  bool _isLoading = true;
+  String? _errorMessage;
+  
+  // Datos del API
+  QuoteDetailDto? _quoteDetail;
+  RequestDetailDto? _requestDetail;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+  
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    
+    try {
+      // Cargar detalle de la cotización
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+      
+      // Cargar detalle de la solicitud
+      final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+      
+      setState(() {
+        _quoteDetail = quoteDetail;
+        _requestDetail = requestDetail;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al cargar los datos: $e';
+        _isLoading = false;
+      });
+      print('❌ Error loading data: $e');
+    }
+  }
+  
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('dd/MM/yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+  
+  String _formatPrice(double amount, String currencyCode) {
+    final currencySymbol = currencyCode == 'PEN' ? 's/' : '\$';
+    return '$currencySymbol${amount.toStringAsFixed(2)}';
+  }
+  
+  String _getComments() {
+    if (_requestDetail == null) return 'Sin comentario';
+    
+    // Concatenar todos los notes de los items que no sean null
+    final comments = _requestDetail!.items
+        .where((item) => item.notes != null && item.notes!.isNotEmpty)
+        .map((item) => item.notes!)
+        .join('\n\n');
+    
+    return comments.isEmpty ? 'Sin comentario' : comments;
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = MaterialTheme.lightScheme();
-    final isTodas = tabOrigen == 'todas';
+    final isTodas = widget.tabOrigen == 'todas';
+    
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: rcColor1,
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: rcColor1,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _errorMessage!,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.red,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadData,
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
+    if (_quoteDetail == null || _requestDetail == null) {
+      return Scaffold(
+        backgroundColor: rcColor1,
+        body: const Center(
+          child: Text('No hay datos disponibles'),
+        ),
+      );
+    }
+    
+    final precio = _formatPrice(_quoteDetail!.totalAmount, _quoteDetail!.currencyCode);
+    final comments = _getComments();
 
     return Scaffold(
       backgroundColor: rcColor1,
@@ -78,11 +203,11 @@ class ViewCotizacionPage extends StatelessWidget {
                     _buildInfoCard(
                       context,
                       children: [
-                        _buildInfoRow(context, 'Razón social:', empresaNombre),
+                        _buildInfoRow(context, 'Razón social:', 'Empresa ${_quoteDetail!.companyId}'),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'RUC:', '1234567890'),
+                        _buildInfoRow(context, 'RUC:', '-'), // TODO: Obtener RUC desde endpoint de empresa
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Correo:', 'empresa1@empresa.com'),
+                        _buildInfoRow(context, 'Correo:', '-'), // TODO: Obtener correo desde endpoint de empresa
                       ],
                     ),
 
@@ -101,13 +226,13 @@ class ViewCotizacionPage extends StatelessWidget {
                     _buildInfoCard(
                       context,
                       children: [
-                        _buildInfoRow(context, 'Empresa:', empresaNombre),
+                        _buildInfoRow(context, 'Cliente:', _requestDetail!.requesterNameSnapshot),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Día:', '10/10/2025'),
+                        _buildInfoRow(context, 'Día:', _formatDate(_requestDetail!.createdAt)),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Origen:', 'La Molina, Lima'),
+                        _buildInfoRow(context, 'Origen:', _requestDetail!.origin.fullAddress),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Destino:', 'La Victoria, Chiclayo'),
+                        _buildInfoRow(context, 'Destino:', _requestDetail!.destination.fullAddress),
                       ],
                     ),
 
@@ -126,9 +251,9 @@ class ViewCotizacionPage extends StatelessWidget {
                     _buildInfoCard(
                       context,
                       children: [
-                        _buildInfoRow(context, 'Total de Artículos:', '16'),
+                        _buildInfoRow(context, 'Total de Artículos:', _requestDetail!.itemsCount.toString()),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Peso Total:', '492.8kg'),
+                        _buildInfoRow(context, 'Peso Total:', '${_requestDetail!.totalWeightKg.toStringAsFixed(1)}kg'),
                         const SizedBox(height: 12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -211,9 +336,10 @@ class ViewCotizacionPage extends StatelessWidget {
                       context,
                       children: [
                         Text(
-                          'No hay problema para transportar las cargas seleccionadas porque se cuenta con capacidad de hasta...',
+                          comments,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: rcColor6,
+                                color: comments == 'Sin comentario' ? rcColor8 : rcColor6,
+                                fontStyle: comments == 'Sin comentario' ? FontStyle.italic : FontStyle.normal,
                               ),
                         ),
                       ],
@@ -240,8 +366,43 @@ class ViewCotizacionPage extends StatelessWidget {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () {
-                              // TODO: Iniciar trato
+                            onTap: () async {
+                              try {
+                                // Obtener la versión de la cotización
+                                final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId);
+                                
+                                // Iniciar la negociación
+                                await _dealsRepository.startNegotiation(
+                                  widget.quoteId,
+                                  ifMatch: versionDto.version.toString(),
+                                );
+                                
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Negociación iniciada exitosamente'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  
+                                  // Navegar a la página de cotizaciones en el tab "EN TRATO" (índice 1)
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(
+                                      builder: (context) => const CotizacionPage(initialTabIndex: 1),
+                                    ),
+                                    (route) => route.isFirst,
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error al iniciar negociación: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(
@@ -277,8 +438,37 @@ class ViewCotizacionPage extends StatelessWidget {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () {
-                              // TODO: Rechazar trato
+                            onTap: () async {
+                              try {
+                                // Rechazar la cotización
+                                await _dealsRepository.rejectQuote(widget.quoteId);
+                                
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Cotización rechazada exitosamente'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  
+                                  // Navegar a la página de cotizaciones en el tab "TODAS" (índice 0)
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(
+                                      builder: (context) => const CotizacionPage(initialTabIndex: 0),
+                                    ),
+                                    (route) => route.isFirst,
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error al rechazar cotización: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(

@@ -1,6 +1,7 @@
 enum RoleCode {
   client,
-  provider;
+  provider,
+  driver;
 
   String get value => name.toUpperCase();
 }

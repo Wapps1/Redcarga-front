@@ -45,4 +45,12 @@ class ApiConstants {
   // Dimensions estimation endpoints
   // --------------------------
   static String get estimateDimensionsEndpoint => '$baseUrl/requests/dimensions/:estimate';
+  
+  // --------------------------
+  // Planning - Routes endpoints
+  // --------------------------
+  // GET: Obtener rutas de un proveedor
+  static String providerRoutes(int companyId) => '$baseUrl/planning/providers/$companyId/routes';
+  // POST/PUT/DELETE: Crear/actualizar/eliminar rutas de una compañía
+  static String companyRoutes(int companyId) => '$baseUrl/planning/companies/$companyId/routes';
 }

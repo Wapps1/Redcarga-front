@@ -30,6 +30,7 @@ class ApiConstants {
   // Requests endpoints
   // --------------------------
   static String get createRequestEndpoint => '$baseUrl/requests/create-request';
+  static String requestById(int requestId) => '$baseUrl/requests/$requestId';
   
   // --------------------------
   // Geo endpoints
@@ -40,6 +41,13 @@ class ApiConstants {
   // Media endpoints
   // --------------------------
   static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
+  static String get uploadPdfEndpoint => '$baseUrl/media/uploads:pdf';
+  
+  // --------------------------
+  // Deals endpoints
+  // --------------------------
+  static String get createQuoteEndpoint => '$baseUrl/api/deals/quotes';
+  static String rejectQuote(int quoteId) => '$baseUrl/api/deals/quotes/$quoteId:reject';
   
   // --------------------------
   // Dimensions estimation endpoints
@@ -53,4 +61,9 @@ class ApiConstants {
   static String providerRoutes(int companyId) => '$baseUrl/planning/providers/$companyId/routes';
   // POST/PUT/DELETE: Crear/actualizar/eliminar rutas de una compañía
   static String companyRoutes(int companyId) => '$baseUrl/planning/companies/$companyId/routes';
+  
+  // --------------------------
+  // Planning - Request Inbox endpoints
+  // --------------------------
+  static String requestInbox(int companyId) => '$baseUrl/planning/companies/$companyId/request-inbox';
 }

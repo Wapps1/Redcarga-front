@@ -1,60 +1,75 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/theme.dart';
+import '../../../../core/session/auth_bloc.dart';
+import '../../../../core/session/session_store.dart';
+import '../../data/request_inbox_service.dart';
+import '../../domain/models/request_inbox_item.dart';
+import '../blocs/request_inbox_bloc.dart';
+import '../blocs/request_inbox_event.dart';
+import '../blocs/request_inbox_state.dart';
 import 'details_request_page.dart';
 import 'summary_requests_page.dart';
 
-class SolicitudesPage extends StatefulWidget {
+class SolicitudesPage extends StatelessWidget {
   const SolicitudesPage({super.key});
 
   @override
-  State<SolicitudesPage> createState() => _SolicitudesPageState();
+  Widget build(BuildContext context) {
+    // Obtener companyId desde AuthBloc
+    final sessionCompanyId = context.select<AuthBloc, int?>((bloc) {
+      final s = bloc.state;
+      return s is AuthSignedIn ? s.session.companyId : null;
+    });
+
+    if (sessionCompanyId == null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.business, size: 64, color: rcColor8),
+              const SizedBox(height: 16),
+              const Text(
+                'Registra tu empresa',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: rcColor6),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Para ver solicitudes, primero debes registrar tu empresa',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: rcColor8),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return BlocProvider(
+      create: (_) => RequestInboxBloc(
+        service: RequestInboxService(SessionStore()),
+      )..add(RequestInboxLoad(sessionCompanyId)),
+      child: _SolicitudesView(companyId: sessionCompanyId),
+    );
+  }
 }
 
-class _SolicitudesPageState extends State<SolicitudesPage>
+class _SolicitudesView extends StatefulWidget {
+  final int companyId;
+  const _SolicitudesView({required this.companyId});
+
+  @override
+  State<_SolicitudesView> createState() => _SolicitudesPageState();
+}
+
+class _SolicitudesPageState extends State<_SolicitudesView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedTab = 0;
   final TextEditingController _searchController = TextEditingController();
-
-  // Datos de ejemplo
-  final List<Map<String, dynamic>> _todasSolicitudes = [
-    {
-      'nombre': 'Juan Pérez',
-      'dia': '10/10/2025',
-      'origen': 'La Molina, Lima',
-      'destino': 'La Victoria, Chiclayo :3',
-      'cantidad': 8,
-      'aceptada': false,
-    },
-    {
-      'nombre': 'John',
-      'dia': '10/10/2025',
-      'origen': 'La Molina, Lima',
-      'destino': 'La Victoria, Chiclayo :3',
-      'cantidad': 8,
-      'aceptada': false,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _aceptadasSolicitudes = [
-    {
-      'nombre': 'Juan Pérez',
-      'dia': '10/10/2025',
-      'origen': 'La Molina, Lima',
-      'destino': 'La Victoria, Chiclayo :3',
-      'cantidad': 8,
-      'aceptada': true,
-    },
-    {
-      'nombre': 'John',
-      'dia': '10/10/2025',
-      'origen': 'La Molina, Lima',
-      'destino': 'La Victoria, Chiclayo :3',
-      'cantidad': 8,
-      'aceptada': true,
-    },
-  ];
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -67,6 +82,17 @@ class _SolicitudesPageState extends State<SolicitudesPage>
         });
       }
     });
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  Future<void> _refresh() async {
+    if (mounted) {
+      context.read<RequestInboxBloc>().add(RequestInboxRefresh(widget.companyId));
+    }
   }
 
   @override
@@ -149,7 +175,38 @@ class _SolicitudesPageState extends State<SolicitudesPage>
                       _buildSearchBar(),
                       // Lista de solicitudes
                       Expanded(
-                        child: _buildSolicitudesList(),
+                        child: BlocBuilder<RequestInboxBloc, RequestInboxState>(
+                          builder: (context, state) {
+                            if (state.status == RequestInboxStatus.loading) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            if (state.status == RequestInboxStatus.failure) {
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.error_outline, size: 64, color: rcColor8),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      state.message ?? 'Error al cargar solicitudes',
+                                      style: const TextStyle(color: rcColor8),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton(
+                                      onPressed: _refresh,
+                                      child: const Text('Reintentar'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                            return RefreshIndicator(
+                              onRefresh: _refresh,
+                              child: _buildSolicitudesList(state.requests),
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -231,15 +288,28 @@ class _SolicitudesPageState extends State<SolicitudesPage>
     );
   }
 
-  Widget _buildSolicitudesList() {
-    final solicitudes =
-        _selectedTab == 0 ? _todasSolicitudes : _aceptadasSolicitudes;
+  Widget _buildSolicitudesList(List<RequestInboxItem> allRequests) {
+    // Filtrar por tab (Todas o Aceptadas)
+    List<RequestInboxItem> filteredRequests = _selectedTab == 0
+        ? allRequests
+        : allRequests.where((r) => r.isAccepted).toList();
 
-    if (solicitudes.isEmpty) {
+    // Filtrar por búsqueda
+    if (_searchQuery.isNotEmpty) {
+      filteredRequests = filteredRequests.where((request) {
+        return request.requesterName.toLowerCase().contains(_searchQuery) ||
+            request.originDisplay.toLowerCase().contains(_searchQuery) ||
+            request.destDisplay.toLowerCase().contains(_searchQuery);
+      }).toList();
+    }
+
+    if (filteredRequests.isEmpty) {
       return Center(
         child: Text(
-          'No hay solicitudes',
-          style: TextStyle(
+          _searchQuery.isNotEmpty
+              ? 'No se encontraron solicitudes'
+              : 'No hay solicitudes',
+          style: const TextStyle(
             color: rcColor8,
             fontSize: 16,
           ),
@@ -249,18 +319,18 @@ class _SolicitudesPageState extends State<SolicitudesPage>
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: solicitudes.length,
+      itemCount: filteredRequests.length,
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
-          child: _buildSolicitudCard(solicitudes[index]),
+          child: _buildSolicitudCard(filteredRequests[index]),
         );
       },
     );
   }
 
-  Widget _buildSolicitudCard(Map<String, dynamic> solicitud) {
-    final isAceptada = solicitud['aceptada'] as bool;
+  Widget _buildSolicitudCard(RequestInboxItem solicitud) {
+    final isAceptada = solicitud.isAccepted;
     final isAceptadasTab = _selectedTab == 1;
 
     return Container(
@@ -289,7 +359,7 @@ class _SolicitudesPageState extends State<SolicitudesPage>
               ),
               children: [
                 TextSpan(
-                  text: solicitud['nombre'] as String,
+                  text: solicitud.requesterName,
                   style: const TextStyle(
                     color: rcColor4,
                     fontWeight: FontWeight.w600,
@@ -303,11 +373,11 @@ class _SolicitudesPageState extends State<SolicitudesPage>
           ),
           const SizedBox(height: 8),
           // Detalles
-          _buildDetailRow('Día:', solicitud['dia'] as String),
+          _buildDetailRow('Día:', solicitud.formattedDate),
           const SizedBox(height: 4),
-          _buildDetailRow('Origen:', solicitud['origen'] as String),
+          _buildDetailRow('Origen:', solicitud.originDisplay),
           const SizedBox(height: 4),
-          _buildDetailRow('Destino:', solicitud['destino'] as String),
+          _buildDetailRow('Destino:', solicitud.destDisplay),
           const SizedBox(height: 8),
           // Icono de paquete y cantidad
           Row(
@@ -332,7 +402,7 @@ class _SolicitudesPageState extends State<SolicitudesPage>
                 ),
                 child: Center(
                   child: Text(
-                    'X${solicitud['cantidad']}',
+                    'X${solicitud.totalQuantity}',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -382,27 +452,41 @@ class _SolicitudesPageState extends State<SolicitudesPage>
     );
   }
 
-  Widget _buildDetallesButton(Map<String, dynamic> solicitud) {
-    final isAceptada = solicitud['aceptada'] as bool;
+  Widget _buildDetallesButton(RequestInboxItem solicitud) {
+    final isAceptada = solicitud.isAccepted;
     
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton(
         onPressed: () {
+          // Convertir RequestInboxItem a Map para compatibilidad con las páginas existentes
+          final solicitudMap = {
+            'requestId': solicitud.requestId, // Importante: pasar el requestId para cargar el detalle
+            'nombre': solicitud.requesterName,
+            'dia': solicitud.formattedDate,
+            'origen': solicitud.originDisplay,
+            'destino': solicitud.destDisplay,
+            'cantidad': solicitud.totalQuantity,
+            'aceptada': isAceptada,
+            'status': solicitud.status,
+            'matchedRouteId': solicitud.matchedRouteId,
+            'routeTypeId': solicitud.routeTypeId,
+          };
+          
           if (isAceptada && _selectedTab == 1) {
             // Si está en la pestaña "Aceptadas", mostrar resumen (solo lectura)
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ResumenSolicitudPage(solicitud: solicitud),
+                builder: (context) => ResumenSolicitudPage(solicitud: solicitudMap),
               ),
             );
           } else {
-            // Si está en "Todas", mostrar detalles completos
+            // Si está en "Todas", mostrar detalles completos (cargará datos del endpoint)
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => DetallesSolicitudPage(solicitud: solicitud),
+                builder: (context) => DetallesSolicitudPage(solicitud: solicitudMap),
               ),
             );
           }

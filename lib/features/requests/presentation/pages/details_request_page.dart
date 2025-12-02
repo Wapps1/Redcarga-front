@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
+import '../../data/requests_service.dart';
+import '../../domain/models/request_detail.dart';
 import 'quotation_page.dart';
 
 class DetallesSolicitudPage extends StatefulWidget {
@@ -15,20 +17,55 @@ class DetallesSolicitudPage extends StatefulWidget {
 }
 
 class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
-  // Datos de ejemplo basados en la foto
-  final List<Map<String, dynamic>> _articulos = [
-    {
-      'nombre': 'Televisión',
-      'cantidad': 8,
-      'peso': 30.8,
-      'pesoTotal': 246.4,
-      'alto': 121.8,
-      'ancho': 68.5,
-      'largo': 20.0,
-      'fragil': true,
-      'imagenes': ['', '', '', ''], // URLs de imágenes
-    },
-  ];
+  final RequestsService _requestsService = RequestsService();
+  RequestDetail? _requestDetail;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRequestDetail();
+  }
+
+  Future<void> _loadRequestDetail() async {
+    final requestId = widget.solicitud['requestId'] as int?;
+    if (requestId == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'ID de solicitud no válido';
+      });
+      return;
+    }
+
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final detail = await _requestsService.getRequestDetail(requestId);
+      
+      setState(() {
+        _requestDetail = detail;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar detalles: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,10 +116,32 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                     ),
                     // Contenido
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
-                        child: _buildInformacionSolicitud(),
-                      ),
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _errorMessage != null
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.error_outline, size: 64, color: rcColor8),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        _errorMessage!,
+                                        style: const TextStyle(color: rcColor8),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      ElevatedButton(
+                                        onPressed: _loadRequestDetail,
+                                        child: const Text('Reintentar'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : SingleChildScrollView(
+                                  padding: const EdgeInsets.all(20),
+                                  child: _buildInformacionSolicitud(),
+                                ),
                     ),
                     // Botones de acción
                     _buildActionButtons(),
@@ -113,6 +172,11 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
   }
 
   Widget _buildClienteCard() {
+    final detail = _requestDetail;
+    if (detail == null) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -122,19 +186,28 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Cliente:', widget.solicitud['nombre'] as String),
+          _buildInfoRow('Cliente:', detail.requesterNameSnapshot),
           const SizedBox(height: 8),
-          _buildInfoRow('Día:', widget.solicitud['dia'] as String),
+          _buildInfoRow('Día:', detail.formattedDate),
           const SizedBox(height: 8),
-          _buildInfoRow('Origen:', widget.solicitud['origen'] as String),
+          _buildInfoRow('Origen:', detail.originDisplay),
           const SizedBox(height: 8),
-          _buildInfoRow('Destino:', widget.solicitud['destino'] as String),
+          _buildInfoRow('Destino:', detail.destDisplay),
+          if (detail.paymentOnDelivery) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow('Pago:', 'Contra entrega'),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildDocumentosSection() {
+    final detail = _requestDetail;
+    if (detail == null) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -156,9 +229,9 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
           ),
           child: Row(
             children: [
-              const Text(
-                'DNI del Cliente',
-                style: TextStyle(
+              Text(
+                'DNI: ${detail.requesterDocNumber}',
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: rcColor6,
@@ -179,14 +252,10 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
   }
 
   Widget _buildArticulosSection() {
-    final totalArticulos = _articulos.fold<int>(
-      0,
-      (sum, articulo) => sum + (articulo['cantidad'] as int),
-    );
-    final pesoTotal = _articulos.fold<double>(
-      0.0,
-      (sum, articulo) => sum + (articulo['pesoTotal'] as double),
-    );
+    final detail = _requestDetail;
+    if (detail == null) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +290,7 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                     ),
                   ),
                   Text(
-                    '$totalArticulos',
+                    '${detail.itemsCount}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -241,7 +310,7 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                     ),
                   ),
                   Text(
-                    '${pesoTotal.toStringAsFixed(1)}kg',
+                    '${detail.totalWeightKg.toStringAsFixed(1)}kg',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -255,12 +324,15 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
         ),
         const SizedBox(height: 16),
         // Lista de artículos
-        ..._articulos.map((articulo) => _buildArticuloCard(articulo)),
+        ...detail.items.map((item) => _buildArticuloCard(item)),
       ],
     );
   }
 
-  Widget _buildArticuloCard(Map<String, dynamic> articulo) {
+  Widget _buildArticuloCard(RequestDetailItem item) {
+    final firstImage = item.images.isNotEmpty ? item.images.first.imageUrl : null;
+    final otherImages = item.images.length > 1 ? item.images.sublist(1, item.images.length > 4 ? 4 : item.images.length) : [];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -282,7 +354,29 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                   color: rcColor7,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.image, color: rcColor8),
+                child: firstImage != null
+                    ? GestureDetector(
+                        onTap: () {
+                          if (item.images.isNotEmpty) {
+                            _showFullScreenImage(item.images, 0);
+                          }
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            firstImage,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, color: rcColor8),
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.image, color: rcColor8),
               ),
               const SizedBox(width: 12),
               // Miniaturas
@@ -290,35 +384,60 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        for (int i = 0; i < 3; i++)
-                          Container(
-                            width: 50,
-                            height: 50,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: rcColor7,
-                              borderRadius: BorderRadius.circular(8),
+                    if (otherImages.isNotEmpty)
+                      Row(
+                        children: [
+                          for (int i = 0; i < (otherImages.length > 3 ? 3 : otherImages.length); i++)
+                            Container(
+                              width: 50,
+                              height: 50,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: rcColor7,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (item.images.isNotEmpty) {
+                                    final imageIndex = i + 1; // +1 porque la primera ya está en firstImage
+                                    _showFullScreenImage(item.images, imageIndex);
+                                  }
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    otherImages[i].imageUrl,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return const Center(
+                                        child: CircularProgressIndicator(strokeWidth: 1),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, size: 20, color: rcColor8),
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: const Icon(Icons.image, size: 20, color: rcColor8),
+                        ],
+                      ),
+                    if (item.images.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () {
+                          // Ver todas las fotos
+                          _showImageGallery(item.images);
+                        },
+                        icon: const Icon(Icons.photo_library, size: 16, color: rcColor4),
+                        label: Text(
+                          'Ver ${item.images.length} foto${item.images.length > 1 ? 's' : ''}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: rcColor4,
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () {
-                        // Ver fotos
-                      },
-                      icon: const Icon(Icons.photo_library, size: 16, color: rcColor4),
-                      label: const Text(
-                        'Ver fotos',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: rcColor4,
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -328,15 +447,17 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
           // Nombre y tags
           Row(
             children: [
-              Text(
-                articulo['nombre'] as String,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: rcColor6,
+              Expanded(
+                child: Text(
+                  item.itemName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: rcColor6,
+                  ),
                 ),
               ),
-              if (articulo['fragil'] as bool) ...[
+              if (item.fragile) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -358,15 +479,15 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
           ),
           const SizedBox(height: 12),
           // Dimensiones
-          _buildInfoRow('Alto:', '${articulo['alto']} cm'),
+          _buildInfoRow('Alto:', '${item.heightCm.toStringAsFixed(1)} cm'),
           const SizedBox(height: 4),
-          _buildInfoRow('Ancho:', '${articulo['ancho']} cm'),
+          _buildInfoRow('Ancho:', '${item.widthCm.toStringAsFixed(1)} cm'),
           const SizedBox(height: 4),
-          _buildInfoRow('largo:', '${articulo['largo']} cm'),
+          _buildInfoRow('Largo:', '${item.lengthCm.toStringAsFixed(1)} cm'),
           const SizedBox(height: 8),
-          _buildInfoRow('Peso:', '${articulo['peso']} kg'),
+          _buildInfoRow('Peso:', '${item.weightKg.toStringAsFixed(1)} kg'),
           const SizedBox(height: 4),
-          _buildInfoRow('Peso Total:', '${articulo['pesoTotal']} kg'),
+          _buildInfoRow('Peso Total:', '${item.totalWeightKg.toStringAsFixed(1)} kg'),
           const SizedBox(height: 8),
           // Cantidad
           Row(
@@ -380,7 +501,7 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                 ),
                 child: Center(
                   child: Text(
-                    'X${articulo['cantidad']}',
+                    'X${item.quantity}',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -392,6 +513,171 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showImageGallery(List<RequestItemImage> images, {int initialIndex = 0}) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+            maxWidth: MediaQuery.of(context).size.width * 0.95,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: rcWhite,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Imágenes del artículo (${images.length})',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: rcColor6,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              // Grid de miniaturas
+              Container(
+                height: 200,
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: rcWhite,
+                ),
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: images.length,
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showFullScreenImage(images, index);
+                      },
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: index == initialIndex ? rcColor4 : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            images[index].imageUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: rcColor7,
+                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: rcColor7,
+                              child: const Icon(Icons.image, color: rcColor8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showFullScreenImage(List<RequestItemImage> images, int initialIndex) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: PageController(initialPage: initialIndex),
+              itemCount: images.length,
+              itemBuilder: (context, index) {
+                return InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 3.0,
+                  child: Center(
+                    child: Image.network(
+                      images[index].imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.error, color: Colors.white, size: 64),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // Botón cerrar
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            // Indicador de página
+            if (images.length > 1)
+              Positioned(
+                bottom: 40,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${initialIndex + 1} / ${images.length}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -416,12 +702,36 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
             'Realizar Cotización',
             null,
             () {
+              if (_requestDetail == null) return;
+              
+              // Convertir RequestDetail a formato para CotizacionPage
+              final articulosMap = _requestDetail!.items.map((item) {
+                return {
+                  'itemId': item.itemId,
+                  'nombre': item.itemName,
+                  'cantidad': item.quantity,
+                  'peso': item.weightKg,
+                  'pesoTotal': item.totalWeightKg,
+                  'alto': item.heightCm,
+                  'ancho': item.widthCm,
+                  'largo': item.lengthCm,
+                  'fragil': item.fragile,
+                  'imagenes': item.images.map((img) => img.imageUrl).toList(),
+                };
+              }).toList();
+              
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => CotizacionPage(
-                    solicitud: widget.solicitud,
-                    articulos: _articulos,
+                    solicitud: {
+                      'requestId': _requestDetail!.requestId,
+                      'nombre': _requestDetail!.requesterNameSnapshot,
+                      'dia': _requestDetail!.formattedDate,
+                      'origen': _requestDetail!.originDisplay,
+                      'destino': _requestDetail!.destDisplay,
+                    },
+                    articulos: articulosMap,
                   ),
                 ),
               );

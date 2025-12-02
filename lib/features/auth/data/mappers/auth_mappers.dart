@@ -51,9 +51,32 @@ extension AppLoginRequestToDto on AppLoginRequest {
 extension AppLoginResponseDtoToDomain on AppLoginResponseDto {
   AppSession toDomain() {
     final now = DateTime.now().millisecondsSinceEpoch;
-    
-    // Mapear roles
-    final rolesList = (roles ?? []).map((roleStr) {
+
+    final rolesList = _mapRoles(roles ?? const []);
+    final companyRolesList =
+        _mapRoles(account?.companyRoles ?? const []);
+
+    final tokenType = tokenTypeString.toUpperCase() == 'BEARER'
+        ? TokenType.bearer
+        : TokenType.bearer;
+
+    final sessionStatus = _mapStatus(status);
+
+    return AppSession(
+      sessionId: sessionId,
+      accountId: accountId,
+      accessToken: accessToken,
+      expiresAt: expiresAt ?? (now + expiresIn * 1000),
+      tokenType: tokenType,
+      status: sessionStatus,
+      roles: rolesList,
+      companyId: account?.companyId,
+      companyRoles: companyRolesList,
+    );
+  }
+
+  List<RoleCode> _mapRoles(List<String> src) {
+    return src.map((roleStr) {
       switch (roleStr.toUpperCase()) {
         case 'CLIENT':
           return RoleCode.client;
@@ -65,38 +88,18 @@ extension AppLoginResponseDtoToDomain on AppLoginResponseDto {
           return RoleCode.client;
       }
     }).toList();
-    
-    // Mapear tokenType
-    final tokenType = this.tokenType.toUpperCase() == 'BEARER'
-        ? TokenType.bearer
-        : TokenType.bearer;
-    
-    // Mapear status
-    SessionStatus sessionStatus;
-    switch (this.status.toUpperCase()) {
-      case 'ACTIVE':
-        sessionStatus = SessionStatus.active;
-        break;
+  }
+
+  String get tokenTypeString => tokenType;
+  SessionStatus _mapStatus(String raw) {
+    switch (raw.toUpperCase()) {
       case 'REVOKED':
-        sessionStatus = SessionStatus.revoked;
-        break;
+        return SessionStatus.revoked;
       case 'EXPIRED':
-        sessionStatus = SessionStatus.expired;
-        break;
+        return SessionStatus.expired;
       default:
-        sessionStatus = SessionStatus.active;
+        return SessionStatus.active;
     }
-    
-    return AppSession(
-      sessionId: sessionId,
-      accountId: accountId,
-      accessToken: accessToken,
-      expiresAt: expiresAt ?? (now + expiresIn * 1000),
-      tokenType: tokenType,
-      status: sessionStatus,
-      roles: rolesList,
-      companyId: account?.companyId,
-    );
   }
 }
 

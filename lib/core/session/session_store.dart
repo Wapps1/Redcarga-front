@@ -22,70 +22,84 @@ class SessionStore {
   static const String _keyFirebaseEmail = 'firebase_email';
   static const String _keyFirebaseExpiresAt = 'firebase_expiresAt';
 
+  static const String _keyAppCompanyRoles = 'app_company_roles_csv';
+
   /// Guarda la sesión de la app
   Future<void> saveAppSession(AppSession session) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     await prefs.setInt(_keyAppSessionId, session.sessionId);
     await prefs.setInt(_keyAppAccountId, session.accountId);
     await prefs.setString(_keyAppAccessToken, session.accessToken);
     await prefs.setInt(_keyAppExpiresAt, session.expiresAt);
     await prefs.setString(_keyAppTokenType, session.tokenType.value);
     await prefs.setString(_keyAppStatus, session.status.value);
-    await prefs.setString(_keyAppRoles, session.roles.map((r) => r.value).join(','));
-    
+    await prefs.setString(
+      _keyAppRoles,
+      session.roles.map((r) => r.value).join(','),
+    );
+    await prefs.setString(
+      _keyAppCompanyRoles,
+      session.companyRoles.map((r) => r.value).join(','),
+    );
+
     if (session.companyId != null) {
       await prefs.setInt(_keyAppCompanyId, session.companyId!);
     } else {
       await prefs.remove(_keyAppCompanyId);
     }
-    
-    print('💾 [SessionStore] AppSession guardada - SessionId: ${session.sessionId}, Roles: ${session.roles.map((r) => r.value).join(", ")}');
+
+    print(
+      '💾 [SessionStore] AppSession guardada - SessionId: ${session.sessionId}, Roles: ${session.roles.map((r) => r.value).join(", ")}, CompanyRoles: ${session.companyRoles.map((r) => r.value).join(", ")}',
+    );
   }
 
-  /// Obtiene la sesión de la app
   Future<AppSession?> getAppSession() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     final token = prefs.getString(_keyAppAccessToken);
     if (token == null) return null;
-    
-    final rolesCsv = prefs.getString(_keyAppRoles) ?? '';
-    final roles = rolesCsv.split(',').where((r) => r.isNotEmpty).map((r) {
-      switch (r.toUpperCase()) {
-        case 'CLIENT':
-          return RoleCode.client;
-        case 'PROVIDER':
-          return RoleCode.provider;
-        default:
-          return RoleCode.client;
-      }
-    }).toList();
-    
+
+    List<RoleCode> parseRoles(String csv) => csv
+        .split(',')
+        .where((r) => r.isNotEmpty)
+        .map((r) {
+          switch (r.toUpperCase()) {
+            case 'PROVIDER':
+              return RoleCode.provider;
+            case 'DRIVER':
+              return RoleCode.driver;
+            default:
+              return RoleCode.client;
+          }
+        })
+        .toList();
+
+    final roles = parseRoles(prefs.getString(_keyAppRoles) ?? '');
+    final companyRoles = parseRoles(prefs.getString(_keyAppCompanyRoles) ?? '');
+
     final companyId = prefs.getInt(_keyAppCompanyId);
-    
     final tokenTypeStr = prefs.getString(_keyAppTokenType) ?? 'BEARER';
-    final tokenType = tokenTypeStr.toUpperCase() == 'BEARER' 
-        ? TokenType.bearer 
+    final tokenType = tokenTypeStr.toUpperCase() == 'BEARER'
+        ? TokenType.bearer
         : TokenType.bearer;
-    
+
     final statusStr = prefs.getString(_keyAppStatus) ?? 'ACTIVE';
     final status = statusStr.toUpperCase() == 'ACTIVE'
         ? SessionStatus.active
         : statusStr.toUpperCase() == 'REVOKED'
             ? SessionStatus.revoked
             : SessionStatus.expired;
-    
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final expiresAt = prefs.getInt(_keyAppExpiresAt) ?? 0;
-    
-    // Verificar si expiró
+
     if (now >= expiresAt) {
       print('⚠️ [SessionStore] AppSession expirada');
       await clearAppSession();
       return null;
     }
-    
+
     return AppSession(
       sessionId: prefs.getInt(_keyAppSessionId) ?? 0,
       accountId: prefs.getInt(_keyAppAccountId) ?? 0,
@@ -95,6 +109,7 @@ class SessionStore {
       status: status,
       roles: roles,
       companyId: companyId,
+      companyRoles: companyRoles,
     );
   }
 
@@ -146,6 +161,7 @@ class SessionStore {
     await prefs.remove(_keyAppStatus);
     await prefs.remove(_keyAppRoles);
     await prefs.remove(_keyAppCompanyId);
+    await prefs.remove(_keyAppCompanyRoles);
     print('🗑️ [SessionStore] AppSession limpiada');
   }
 

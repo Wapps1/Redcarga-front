@@ -39,11 +39,14 @@ class AuthWrapper extends StatelessWidget {
           final roles = session.roles;
           
           // Determinar el rol del usuario
-          // Si tiene PROVIDER, es proveedor, sino es cliente
+          // Prioridad: driver > provider > customer
+          final isDriver = roles.contains(RoleCode.driver);
           final isProvider = roles.contains(RoleCode.provider);
-          final userRole = isProvider 
-              ? UserRole.provider 
-              : UserRole.customer;
+          final userRole = isDriver
+              ? UserRole.driver
+              : isProvider 
+                  ? UserRole.provider 
+                  : UserRole.customer;
           
           print('🏠 [AuthWrapper] Usuario autenticado - Rol: ${userRole.name}, Roles: ${roles.map((r) => r.value).join(", ")}');
           

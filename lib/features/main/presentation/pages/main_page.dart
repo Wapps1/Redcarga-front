@@ -2,12 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_chats_page.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
+import 'package:red_carga/features/providers/presentation/pages/provider_profile_page.dart';
+import 'package:red_carga/features/customers/presentation/pages/customer_profile_page.dart';
+import 'package:red_carga/features/drivers/presentation/pages/driver_home_page.dart';
+import 'package:red_carga/features/drivers/presentation/pages/driver_map_page.dart';
+import 'package:red_carga/features/drivers/presentation/pages/driver_profile_page.dart';
 import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
 import 'package:red_carga/features/requests/presentation/pages/requests_page.dart';
+import 'package:red_carga/features/planning/presentation/pages/routes_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
+import '../widgets/driver_bottom_bar.dart';
 
-enum UserRole { customer, provider }
+enum UserRole { customer, provider, driver }
 
 class MainPage extends StatefulWidget {
   final UserRole role;
@@ -25,15 +32,21 @@ class _MainPageState extends State<MainPage> {
     HomePage(role: widget.role),
     const CotizacionPage(),
     const ChatsPage(),
-    ProfilePage(role: widget.role),
+    const CustomerProfilePage(),
   ];
 
   late final List<Widget> _providerPages = <Widget>[
     HomePage(role: widget.role),
-    const _Stub('Rutas'),
+    const RoutesPage(),
     RequestsPage(role: widget.role),
     const ChatsPage(),
-    ProfilePage(role: widget.role),
+    const ProviderProfilePage(),
+  ];
+
+  late final List<Widget> _driverPages = <Widget>[
+    DriverHomePage(onNavigateToMap: () => _onTabChanged(1)),
+    const DriverMapPage(),
+    const DriverProfilePage(),
   ];
 
   void _onTabChanged(int index) {
@@ -50,9 +63,15 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isCustomer =  widget.role == UserRole.customer;
-    //final isCustomer =  false;
-    final pages = isCustomer ? _customerPages : _providerPages;
+    final isCustomer = widget.role == UserRole.customer;
+    final isDriver = widget.role == UserRole.driver;
+    //final isCustomer = false;
+    //final isDriver = true;
+    final pages = isCustomer
+        ? _customerPages
+        : isDriver
+            ? _driverPages
+            : _providerPages;
 
     return Scaffold(
       body: SafeArea(
@@ -69,10 +88,15 @@ class _MainPageState extends State<MainPage> {
               onChanged: _onTabChanged,
               onCreatePressed: _onCreatePressed,
             )
-          : ProviderBottomBar(
-              currentIndex: selectedIndex,
-              onChanged: _onTabChanged,
-            ),
+          : isDriver
+              ? DriverBottomBar(
+                  currentIndex: selectedIndex,
+                  onChanged: _onTabChanged,
+                )
+              : ProviderBottomBar(
+                  currentIndex: selectedIndex,
+                  onChanged: _onTabChanged,
+                ),
     );
   }
 }

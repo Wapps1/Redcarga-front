@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme.dart';
 import '../../domain/models/request_item.dart';
+import '../../data/models/geo_catalog_item.dart';
+import '../../data/geo_service.dart';
 import '../widgets/add_item_dialog.dart';
 import 'request_summary_page.dart';
 
@@ -15,28 +17,131 @@ class CreateRequestPage extends StatefulWidget {
 
 class _CreateRequestPageState extends State<CreateRequestPage> {
   final _nameController = TextEditingController();
-  final _originDeptController = TextEditingController();
-  final _originProvController = TextEditingController();
   final _originDistController = TextEditingController();
-  final _destDeptController = TextEditingController();
-  final _destProvController = TextEditingController();
   final _destDistController = TextEditingController();
   final _dateController = TextEditingController();
   
   bool _cashOnDelivery = false;
   final List<RequestItem> _items = [];
+  
+  // Servicio geográfico
+  final GeoService _geoService = GeoService();
+  
+  // Datos geográficos
+  List<GeoCatalogItem> _departments = [];
+  List<GeoCatalogItem> _originProvinces = [];
+  List<GeoCatalogItem> _destProvinces = [];
+  
+  // Selecciones
+  GeoCatalogItem? _selectedOriginDept;
+  GeoCatalogItem? _selectedOriginProv;
+  GeoCatalogItem? _selectedDestDept;
+  GeoCatalogItem? _selectedDestProv;
+  
+  bool _isLoadingGeo = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGeoCatalog();
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _originDeptController.dispose();
-    _originProvController.dispose();
     _originDistController.dispose();
-    _destDeptController.dispose();
-    _destProvController.dispose();
     _destDistController.dispose();
     _dateController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadGeoCatalog() async {
+    try {
+      setState(() {
+        _isLoadingGeo = true;
+      });
+      
+      final departments = await _geoService.getDepartments();
+      
+      setState(() {
+        _departments = departments;
+        _isLoadingGeo = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingGeo = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar catálogo geográfico: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadOriginProvinces(String departmentCode) async {
+    try {
+      print('🔄 [CreateRequestPage] Cargando provincias para departamento: $departmentCode');
+      final provinces = await _geoService.getProvincesByDepartment(departmentCode);
+      print('✅ [CreateRequestPage] Provincias cargadas: ${provinces.length}');
+      setState(() {
+        _originProvinces = provinces;
+        _selectedOriginProv = null; // Reset provincia al cambiar departamento
+      });
+      
+      if (provinces.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se encontraron provincias para este departamento'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ [CreateRequestPage] Error al cargar provincias: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar provincias: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadDestProvinces(String departmentCode) async {
+    try {
+      print('🔄 [CreateRequestPage] Cargando provincias destino para departamento: $departmentCode');
+      final provinces = await _geoService.getProvincesByDepartment(departmentCode);
+      print('✅ [CreateRequestPage] Provincias destino cargadas: ${provinces.length}');
+      setState(() {
+        _destProvinces = provinces;
+        _selectedDestProv = null; // Reset provincia al cambiar departamento
+      });
+      
+      if (provinces.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se encontraron provincias para este departamento'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ [CreateRequestPage] Error al cargar provincias destino: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar provincias: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   int get _totalArticles => _items.fold(0, (sum, item) => sum + item.quantity);
@@ -71,7 +176,11 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
             _buildHeader(context),
             // Contenido
             Expanded(
-              child: SingleChildScrollView(
+              child: _isLoadingGeo
+                  ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                  : SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,20 +191,12 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
                     // Origen
                     _buildSectionTitle('Origen'),
                     const SizedBox(height: 12),
-                    _buildLocationFields(
-                      _originDeptController,
-                      _originProvController,
-                      _originDistController,
-                    ),
+                          _buildLocationFields(isOrigin: true),
                     const SizedBox(height: 20),
                     // Destino
                     _buildSectionTitle('Destino'),
                     const SizedBox(height: 12),
-                    _buildLocationFields(
-                      _destDeptController,
-                      _destProvController,
-                      _destDistController,
-                    ),
+                          _buildLocationFields(isOrigin: false),
                     const SizedBox(height: 8),
                     _buildNote(),
                     const SizedBox(height: 20),
@@ -198,20 +299,156 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
     );
   }
 
-  Widget _buildLocationFields(
-    TextEditingController dept,
-    TextEditingController prov,
-    TextEditingController dist,
-  ) {
+  Widget _buildLocationFields({
+    required bool isOrigin,
+  }) {
+    final selectedDept = isOrigin ? _selectedOriginDept : _selectedDestDept;
+    final selectedProv = isOrigin ? _selectedOriginProv : _selectedDestProv;
+    final distController = isOrigin ? _originDistController : _destDistController;
+    final provinces = isOrigin ? _originProvinces : _destProvinces;
+
     return Column(
       children: [
-        _buildTextField(dept, 'Departamento'),
+        _buildDepartmentDropdown(isOrigin),
         const SizedBox(height: 12),
-        _buildTextField(prov, 'Provincia'),
+        _buildProvinceDropdown(isOrigin, selectedDept, provinces),
         const SizedBox(height: 12),
-        _buildTextField(dist, 'Distrito'),
+        _buildTextField(distController, 'Distrito'),
       ],
     );
+  }
+
+  Widget _buildDepartmentDropdown(bool isOrigin) {
+    return Container(
+      decoration: BoxDecoration(
+        color: rcWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: rcColor4.withOpacity(0.3),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<GeoCatalogItem>(
+          isExpanded: true,
+          value: isOrigin ? _selectedOriginDept : _selectedDestDept,
+          hint: Text(
+            'Departamento',
+            style: TextStyle(
+              color: rcColor6.withOpacity(0.6),
+            ),
+          ),
+          items: _departments.map((dept) {
+            return DropdownMenuItem<GeoCatalogItem>(
+              value: dept,
+              child: Text(
+                dept.name,
+                style: const TextStyle(
+                  color: rcColor6,
+                ),
+              ),
+            );
+          }).toList(),
+          onChanged: _isLoadingGeo
+              ? null
+              : (GeoCatalogItem? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      if (isOrigin) {
+                        _selectedOriginDept = newValue;
+                        _selectedOriginProv = null;
+                        _originProvinces = [];
+                      } else {
+                        _selectedDestDept = newValue;
+                        _selectedDestProv = null;
+                        _destProvinces = [];
+                      }
+                    });
+                    _loadProvincesForDepartment(newValue.code, isOrigin);
+                  }
+                },
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: rcColor6,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProvinceDropdown(
+    bool isOrigin,
+    GeoCatalogItem? selectedDept,
+    List<GeoCatalogItem> provinces,
+  ) {
+    final isEmpty = provinces.isEmpty;
+    final isDisabled = selectedDept == null || _isLoadingGeo || isEmpty;
+    
+    print('🔍 [CreateRequestPage] Building province dropdown - isOrigin: $isOrigin, provinces: ${provinces.length}, selectedDept: ${selectedDept?.name}');
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: rcWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: rcColor4.withOpacity(0.3),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<GeoCatalogItem>(
+          isExpanded: true,
+          value: isOrigin ? _selectedOriginProv : _selectedDestProv,
+          hint: Text(
+            isEmpty && selectedDept != null 
+                ? 'No hay provincias disponibles' 
+                : 'Provincia',
+            style: TextStyle(
+              color: rcColor6.withOpacity(0.6),
+            ),
+          ),
+          items: provinces.isEmpty
+              ? null
+              : provinces.map((prov) {
+                  return DropdownMenuItem<GeoCatalogItem>(
+                    value: prov,
+                    child: Text(
+                      prov.name,
+                      style: const TextStyle(
+                        color: rcColor6,
+                      ),
+                    ),
+                  );
+                }).toList(),
+          onChanged: isDisabled
+              ? null
+              : (GeoCatalogItem? newValue) {
+                  print('✅ [CreateRequestPage] Provincia seleccionada: ${newValue?.name}');
+                  setState(() {
+                    if (isOrigin) {
+                      _selectedOriginProv = newValue;
+                    } else {
+                      _selectedDestProv = newValue;
+                    }
+                  });
+                },
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: rcColor6,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadProvincesForDepartment(String departmentCode, bool isOrigin) async {
+    if (isOrigin) {
+      await _loadOriginProvinces(departmentCode);
+    } else {
+      await _loadDestProvinces(departmentCode);
+    }
   }
 
   Widget _buildTextField(TextEditingController controller, String label) {
@@ -425,11 +662,11 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
                         width: 1,
                       ),
                     ),
-                    child: item.imagePath != null
+                    child: item.firstImagePath != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.file(
-                              File(item.imagePath!),
+                              File(item.firstImagePath!),
                               fit: BoxFit.cover,
                             ),
                           )
@@ -603,18 +840,42 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
           const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: _isLoadingGeo ? null : () {
+                // Validar que se hayan seleccionado departamento y provincia
+                if (_selectedOriginDept == null || _selectedOriginProv == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Por favor selecciona departamento y provincia de origen'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                if (_selectedDestDept == null || _selectedDestProv == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Por favor selecciona departamento y provincia de destino'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => RequestSummaryPage(
                       name: _nameController.text.isEmpty 
                           ? 'Sin Nombre' 
                           : _nameController.text,
-                      originDept: _originDeptController.text,
-                      originProv: _originProvController.text,
+                      originDept: _selectedOriginDept!.code,
+                      originDeptName: _selectedOriginDept!.name,
+                      originProv: _selectedOriginProv!.code,
+                      originProvName: _selectedOriginProv!.name,
                       originDist: _originDistController.text,
-                      destDept: _destDeptController.text,
-                      destProv: _destProvController.text,
+                      destDept: _selectedDestDept!.code,
+                      destDeptName: _selectedDestDept!.name,
+                      destProv: _selectedDestProv!.code,
+                      destProvName: _selectedDestProv!.name,
                       destDist: _destDistController.text,
                       date: _dateController.text,
                       cashOnDelivery: _cashOnDelivery,

@@ -32,4 +32,31 @@ class ApiConstants {
   // Provider - Company Operators endpoints
   static String providerCompanyOperators(int companyId) => '$baseUrl/providers/company/$companyId/operators';
 
+  // --------------------------
+  // Requests endpoints
+  // --------------------------
+  static String get createRequestEndpoint => '$baseUrl/requests/create-request';
+  
+  // --------------------------
+  // Geo endpoints
+  // --------------------------
+  static String get geoCatalogEndpoint => '$baseUrl/geo/catalog';
+  
+  // --------------------------
+  // Media endpoints
+  // --------------------------
+  static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
+  
+  // --------------------------
+  // Dimensions estimation endpoints
+  // --------------------------
+  static String get estimateDimensionsEndpoint => '$baseUrl/requests/dimensions/:estimate';
+  
+  // --------------------------
+  // Planning - Routes endpoints
+  // --------------------------
+  // GET: Obtener rutas de un proveedor
+  static String providerRoutes(int companyId) => '$baseUrl/planning/providers/$companyId/routes';
+  // POST/PUT/DELETE: Crear/actualizar/eliminar rutas de una compañía
+  static String companyRoutes(int companyId) => '$baseUrl/planning/companies/$companyId/routes';
 }

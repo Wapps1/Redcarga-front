@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/articulo_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_modal.dart';
+import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
+import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
+import 'package:intl/intl.dart';
 
 class EditCotizacionPage extends StatefulWidget {
+  final int? quoteId;
   final bool acceptedDeal;
   final bool editingMode;
   final bool isCustomer;
@@ -11,6 +15,7 @@ class EditCotizacionPage extends StatefulWidget {
 
   const EditCotizacionPage({
     super.key,
+    this.quoteId,
     this.acceptedDeal = false,
     this.editingMode = false,
     this.isCustomer = false,
@@ -26,29 +31,39 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
   late bool _editingMode;
   late bool _isCustomer;
   
+  // Repositorio
+  final _dealsRepository = DealsRepositories.createDealsRepository();
+  
+  // Estados de carga
+  bool _isLoading = true;
+  String? _errorMessage;
+  
+  // Datos del API
+  QuoteDetailDto? _quoteDetail;
+  
   // Información de la solicitud
-  late String _cliente;
-  late String _dia;
-  late String _origen;
-  late String _destino;
-  late bool _pagoContraentrega;
+  String _cliente = '';
+  String _dia = '';
+  String _origen = '';
+  String _destino = '';
+  bool _pagoContraentrega = false;
   
   // Información de la empresa
-  late String _razonSocial;
-  late String _ruc;
-  late String _correo;
+  String _razonSocial = 'Empresa';
+  String _ruc = '';
+  String _correo = '';
   
   // Comentario
-  late String _comentario;
+  String _comentario = '';
   late TextEditingController _comentarioController;
   
   // Artículos
-  late List<ArticuloData> _articulos;
-  late String _precioPropuesto;
+  List<ArticuloData> _articulos = [];
+  String _precioPropuesto = '0';
   late TextEditingController _precioController;
   
   // Valores originales para detectar cambios
-  late Map<String, dynamic> _valoresOriginales;
+  Map<String, dynamic> _valoresOriginales = {};
 
   @override
   void initState() {
@@ -57,43 +72,97 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     _editingMode = widget.editingMode;
     _isCustomer = widget.isCustomer;
     
-    // Inicializar datos de ejemplo
-    _cliente = 'Juan Pérez';
-    _dia = '10/10/2025';
-    _origen = 'La Molina, Lima';
-    _destino = 'La Victoria, Chiclayo';
-    _pagoContraentrega = true;
+    _comentarioController = TextEditingController();
+    _precioController = TextEditingController();
     
-    _razonSocial = 'Empresa 1';
-    _ruc = '1234567890';
-    _correo = 'empresa1@empresa.com';
+    _loadData();
+  }
+  
+  Future<void> _loadData() async {
+    if (widget.quoteId == null) {
+      setState(() {
+        _errorMessage = 'No se proporcionó un quoteId';
+        _isLoading = false;
+      });
+      return;
+    }
     
-    _comentario = 'No hay problema para transportar las cargas seleccionadas porque se cuenta con capacidad de hasta...';
-    _comentarioController = TextEditingController(text: _comentario);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     
-    _precioPropuesto = '1000';
-    _precioController = TextEditingController(text: _precioPropuesto);
-    
-    _articulos = [
-      ArticuloData(
-        id: '1',
-        titulo: 'Televisión',
-        esFragil: true,
-        fotos: [
-          'https://via.placeholder.com/300',
-          'https://via.placeholder.com/300',
-          'https://via.placeholder.com/300',
-          'https://via.placeholder.com/300',
-        ],
-        alto: 121.8,
-        ancho: 68.5,
-        largo: 20.0,
-        peso: 30.8,
-        cantidad: 8,
-      ),
-    ];
-    
-    _guardarValoresOriginales();
+    try {
+      // Cargar detalle de la cotización
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId!);
+      
+      // Cargar detalle de la solicitud
+      final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+      
+      setState(() {
+        _quoteDetail = quoteDetail;
+        
+        // Mapear datos de la solicitud
+        _cliente = requestDetail.requesterNameSnapshot;
+        _dia = _formatDate(requestDetail.createdAt);
+        _origen = requestDetail.origin.fullAddress;
+        _destino = requestDetail.destination.fullAddress;
+        _pagoContraentrega = requestDetail.paymentOnDelivery;
+        
+        // Mapear precio
+        _precioPropuesto = quoteDetail.totalAmount.toStringAsFixed(2);
+        _precioController.text = _precioPropuesto;
+        
+        // Mapear artículos
+        _articulos = requestDetail.items.map((item) {
+          // Buscar la cantidad correspondiente en la cotización
+          // La cantidad en la cotización puede ser diferente a la de la solicitud
+          QuoteItemDto? quoteItem;
+          try {
+            quoteItem = quoteDetail.items.firstWhere(
+              (qi) => qi.requestItemId == item.itemId,
+            );
+          } catch (e) {
+            // Si no se encuentra, usar null y luego usar la cantidad de la solicitud
+            quoteItem = null;
+          }
+          
+          return ArticuloData(
+            id: item.itemId.toString(),
+            titulo: item.itemName,
+            esFragil: item.fragile,
+            fotos: item.images.map((img) => img.imageUrl).toList(),
+            alto: item.heightCm,
+            ancho: item.widthCm,
+            largo: item.lengthCm,
+            peso: item.weightKg,
+            // Usar la cantidad de la cotización si existe, sino la de la solicitud
+            cantidad: quoteItem?.qty ?? item.quantity,
+          );
+        }).toList();
+        
+        _comentario = ''; // No hay comentario en el API por ahora
+        _comentarioController.text = _comentario;
+        
+        _isLoading = false;
+        _guardarValoresOriginales();
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error al cargar los datos: $e';
+        _isLoading = false;
+      });
+      print('❌ Error loading data: $e');
+    }
+  }
+  
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('dd/MM/yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
   }
 
   @override
@@ -203,6 +272,44 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = MaterialTheme.lightScheme();
+    
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: rcColor1,
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: rcColor1,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _errorMessage!,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.red,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadData,
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
     final totalArticulos = _calcularTotalArticulos();
     final pesoTotal = _calcularPesoTotal();
 
@@ -665,15 +772,20 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     }
 
     if (!_editingMode && _acceptedDeal) {
-      // Botones: Aceptar nueva cotización y Rechazar cotización
+      // Botones: Iniciar negociación y Rechazar cotización
       return Column(
         children: [
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () {
-                // TODO: Rechazar cotización
-                _mostrarMensaje('Cotización rechazada');
+              onPressed: _quoteDetail == null ? null : () async {
+                try {
+                  await _rejectQuote();
+                } catch (e) {
+                  if (mounted) {
+                    _mostrarMensaje('Error al rechazar cotización: $e');
+                  }
+                }
               },
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: rcError),
@@ -702,16 +814,21 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () {
-                    // TODO: Aceptar nueva cotización
-                    _mostrarMensaje('Nueva cotización aceptada');
+                  onTap: _quoteDetail == null ? null : () async {
+                    try {
+                      await _startNegotiation();
+                    } catch (e) {
+                      if (mounted) {
+                        _mostrarMensaje('Error al iniciar negociación: $e');
+                      }
+                    }
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Center(
                       child: Text(
-                        'Aceptar nueva cotización',
+                        'Iniciar negociación',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                               color: rcWhite,
                               fontWeight: FontWeight.bold,
@@ -859,6 +976,48 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _startNegotiation() async {
+    if (widget.quoteId == null) return;
+    
+    try {
+      // Obtener la versión de la cotización
+      final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId!);
+      
+      await _dealsRepository.startNegotiation(
+        widget.quoteId!,
+        ifMatch: versionDto.version.toString(),
+      );
+      
+      if (mounted) {
+        _mostrarMensaje('Negociación iniciada exitosamente');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        _mostrarMensaje('Error al iniciar negociación: $e');
+      }
+      rethrow;
+    }
+  }
+  
+  Future<void> _rejectQuote() async {
+    if (widget.quoteId == null) return;
+    
+    try {
+      await _dealsRepository.rejectQuote(widget.quoteId!);
+      
+      if (mounted) {
+        _mostrarMensaje('Cotización rechazada exitosamente');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        _mostrarMensaje('Error al rechazar cotización: $e');
+      }
+      rethrow;
+    }
   }
 
   void _mostrarFotosAmpliadas(List<String> fotos) {

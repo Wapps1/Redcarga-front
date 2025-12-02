@@ -3,7 +3,10 @@ import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
 import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
 import 'package:red_carga/features/deals/data/models/request_detail_dto.dart';
+import 'package:red_carga/features/deals/data/models/company_dto.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_chat.dart';
+import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 import 'package:intl/intl.dart';
 
 class ViewCotizacionPage extends StatefulWidget {
@@ -31,6 +34,7 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
   // Datos del API
   QuoteDetailDto? _quoteDetail;
   RequestDetailDto? _requestDetail;
+  CompanyDto? _company;
   
   @override
   void initState() {
@@ -51,9 +55,18 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
       // Cargar detalle de la solicitud
       final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
       
+      // Cargar datos de la empresa
+      CompanyDto? company;
+      try {
+        company = await _dealsRepository.getCompany(quoteDetail.companyId);
+      } catch (e) {
+        print('⚠️ Error loading company ${quoteDetail.companyId}: $e');
+      }
+      
       setState(() {
         _quoteDetail = quoteDetail;
         _requestDetail = requestDetail;
+        _company = company;
         _isLoading = false;
       });
     } catch (e) {
@@ -203,11 +216,29 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
                     _buildInfoCard(
                       context,
                       children: [
-                        _buildInfoRow(context, 'Razón social:', 'Empresa ${_quoteDetail!.companyId}'),
+                        _buildInfoRow(
+                          context, 
+                          'Razón social:', 
+                          _company?.legalName ?? 'Empresa ${_quoteDetail!.companyId}'
+                        ),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'RUC:', '-'), // TODO: Obtener RUC desde endpoint de empresa
+                        _buildInfoRow(
+                          context, 
+                          'Nombre comercial:', 
+                          _company?.tradeName ?? '-'
+                        ),
                         const SizedBox(height: 12),
-                        _buildInfoRow(context, 'Correo:', '-'), // TODO: Obtener correo desde endpoint de empresa
+                        _buildInfoRow(
+                          context, 
+                          'RUC:', 
+                          _company?.ruc ?? '-'
+                        ),
+                        const SizedBox(height: 12),
+                        _buildInfoRow(
+                          context, 
+                          'Correo:', 
+                          _company?.email ?? '-'
+                        ),
                       ],
                     ),
 
@@ -508,7 +539,18 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () {
-                              // TODO: Ir al chat
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => ChatPage(
+                                    quoteId: widget.quoteId,
+                                    nombre: _quoteDetail != null 
+                                        ? 'Empresa ${_quoteDetail!.companyId}' 
+                                        : 'Chat',
+                                    userRole: UserRole.customer, // TODO: Obtener del contexto
+                                    acceptedDeal: _quoteDetail?.stateCode == 'ACEPTADO',
+                                  ),
+                                ),
+                              );
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(

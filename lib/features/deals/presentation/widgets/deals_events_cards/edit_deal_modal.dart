@@ -78,7 +78,7 @@ class _EditDealModalState extends State<EditDealModal> {
                   ),
                   child: Center(
                     child: SvgPicture.asset(
-                      'lib/features/deals/assets_temp/documento_editar.svg',
+                      'lib/features/deals/assets_temp/edicion_documento.svg',
                       width: 50,
                       height: 50,
                       fit: BoxFit.contain,
@@ -91,7 +91,7 @@ class _EditDealModalState extends State<EditDealModal> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
+/*
                 // Campo de texto para el motivo
                 TextField(
                   controller: _motivoController,
@@ -129,6 +129,7 @@ class _EditDealModalState extends State<EditDealModal> {
                       ),
                 ),
                 const SizedBox(height: 32),
+                */
 
                 // Botón según el estado
                 SizedBox(
@@ -149,14 +150,16 @@ class _EditDealModalState extends State<EditDealModal> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          final motivo = _motivoController.text.trim();
-                          if (motivo.isNotEmpty) {
-                            // No cerrar aquí, dejar que el callback maneje el cierre
-                            if (widget.acceptedDeal) {
-                              widget.onEnviarSolicitud(motivo);
-                            } else {
+                          // El input de motivo está comentado, usar string vacío
+                          final motivo = ''; // _motivoController.text.trim();
+                          // No cerrar aquí, dejar que el callback maneje el cierre
+                          if (widget.acceptedDeal) {
+                            widget.onEnviarSolicitud(motivo);
+                          } else {
+                            // Ejecutar el callback async en el siguiente frame para evitar bloqueos
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
                               widget.onActualizarCotizacion(motivo);
-                            }
+                            });
                           }
                         },
                         borderRadius: BorderRadius.circular(12),

@@ -72,7 +72,7 @@ class EditDealChatCard extends StatelessWidget {
             ),
             child: Center(
               child: SvgPicture.asset(
-                'lib/features/deals/assets_temp/documento_editar.svg',
+                'lib/features/deals/assets_temp/edicion_documento.svg',
                 width: 35,
                 height: 35,
                 fit: BoxFit.contain,

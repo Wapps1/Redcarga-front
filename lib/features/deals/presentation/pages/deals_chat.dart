@@ -18,16 +18,22 @@ import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_chat_card.dart';
+import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
+import 'package:red_carga/features/deals/data/repositories/deals_repository.dart';
+import 'package:red_carga/features/deals/data/models/quote_change_request_dto.dart';
+import 'package:red_carga/core/session/session_store.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 class ChatPage extends StatefulWidget {
+  final int quoteId;
   final String nombre;
   final UserRole userRole;
   final bool acceptedDeal;
 
   const ChatPage({
     super.key,
+    required this.quoteId,
     required this.nombre,
     required this.userRole,
     this.acceptedDeal = false,
@@ -37,26 +43,34 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-// Modelo de mensaje del chat
+// Modelo unificado de mensaje del chat
 class ChatMessage {
   final String id;
-  final String text;
+  final String? text;
   final bool isMe;
   final DateTime timestamp;
   final String? imagePath;
   final String? filePath;
   final String? fileName;
   final MessageType type;
+  final bool isSystemEvent;
+  final String? systemSubtypeCode; // Para eventos del sistema
+  final String? info; // Para eventos del sistema
+  final bool isUnread; // Para marcar mensajes no leídos
 
   ChatMessage({
     required this.id,
-    required this.text,
+    this.text,
     required this.isMe,
     required this.timestamp,
     this.imagePath,
     this.filePath,
     this.fileName,
     required this.type,
+    this.isSystemEvent = false,
+    this.systemSubtypeCode,
+    this.info,
+    this.isUnread = false,
   });
 }
 
@@ -64,6 +78,7 @@ enum MessageType {
   text,
   image,
   file,
+  systemEvent,
 }
 
 // Estados para acciones del chat
@@ -85,16 +100,23 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
   
+  // Repositorio y datos del usuario
+  late DealsRepository _dealsRepository;
+  int? _currentAccountId;
+  bool _isLoadingMessages = false;
+  
   // Cambiar este valor para forzar acceptedDeal a false (comentar/descomentar)
   // final bool _actualAcceptedDeal = false;
   late bool _actualAcceptedDeal;
   
   // Lista de mensajes del chat
   final List<ChatMessage> _messages = [];
+  int _lastReadMessageId = 0;
   
   // Estados de acciones del chat
   ChatAction _otherPersonAction = ChatAction.none; // Acción de la otra persona
   double _counterofferPrice = 0.0; // Precio de la contraoferta
+  double _currentQuotePrice = 0.0; // Precio actual de la cotización
   bool _isMyCounteroffer = false; // Si el usuario actual hizo la contraoferta
   bool _isMyCancellation = false; // Si el usuario actual canceló el trato
   bool _isMyPayment = false; // Si el usuario actual confirmó el pago
@@ -108,10 +130,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _actualAcceptedDeal = !widget.acceptedDeal;
+    _dealsRepository = DealsRepositories.createDealsRepository();
+    // Inicializar con false, se actualizará al cargar el detalle de la cotización
+    _actualAcceptedDeal = false;
     
     _tabController = TabController(
-      length: _actualAcceptedDeal ? 2 : 1,
+      length: 1, // Inicialmente solo el tab de Chat
       vsync: this,
     );
     _tabController.addListener(() {
@@ -133,45 +157,184 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       }
     });
     
-    // Agregar algunos mensajes de ejemplo
-    _messages.addAll([
-      ChatMessage(
-        id: '1',
-        text: 'Hola, estoy interesado en tu cotización',
-        isMe: false,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '2',
-        text: 'Perfecto, podemos coordinar la entrega',
-        isMe: true,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '3',
-        text: '¿Cuándo podríamos iniciar?',
-        isMe: false,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 30)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '4',
-        text: 'Podríamos iniciar la próxima semana',
-        isMe: true,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
-        type: MessageType.text,
-      ),
-    ]);
+    // Cargar el estado de la cotización y los mensajes del chat
+    _loadQuoteState();
+    _loadChatMessages();
+  }
+
+  Future<void> _loadQuoteState() async {
+    try {
+      // Cargar detalle de la cotización para obtener el stateCode
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+      
+      // Determinar si el trato está aceptado basándose en el stateCode
+      final isAccepted = quoteDetail.stateCode == 'ACEPTADA';
+      
+      if (mounted) {
+        setState(() {
+          _actualAcceptedDeal = isAccepted;
+          _currentQuotePrice = quoteDetail.totalAmount;
+          
+          // Actualizar el TabController si es necesario
+          if (isAccepted && _tabController.length == 1) {
+            _tabController.dispose();
+            _tabController = TabController(length: 2, vsync: this);
+            _tabController.addListener(() {
+              setState(() {});
+            });
+          } else if (!isAccepted && _tabController.length == 2) {
+            _tabController.dispose();
+            _tabController = TabController(length: 1, vsync: this);
+            _tabController.addListener(() {
+              setState(() {});
+            });
+          }
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading quote state: $e');
+      // En caso de error, mantener el valor por defecto
+    }
+  }
+
+  Future<void> _loadChatMessages() async {
+    setState(() {
+      _isLoadingMessages = true;
+    });
+    
+    try {
+      // Obtener accountId del usuario actual
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null) {
+        _currentAccountId = session.accountId;
+      }
+      
+      // Cargar mensajes del chat
+      final chatDto = await _dealsRepository.getChat(widget.quoteId);
+      _lastReadMessageId = chatDto.lastReadMessageId;
+      
+      // Mapear mensajes del API a mensajes locales (procesar en batches para no bloquear)
+      final List<ChatMessage> messages = [];
+      final messagesCount = chatDto.messages.length;
+      
+      // Procesar en batches de 50 para no bloquear el hilo principal
+      const batchSize = 50;
+      for (int i = 0; i < messagesCount; i += batchSize) {
+        final end = (i + batchSize < messagesCount) ? i + batchSize : messagesCount;
+        
+        // Procesar batch sin crear sublista innecesaria
+        for (int j = i; j < end; j++) {
+          final msgDto = chatDto.messages[j];
+          final isMe = _currentAccountId != null && msgDto.createdBy == _currentAccountId;
+          final isUnread = msgDto.messageId > _lastReadMessageId;
+          
+          // Parsear fecha de forma segura (cachear si es posible)
+          DateTime timestamp;
+          try {
+            timestamp = DateTime.parse(msgDto.createdAt);
+          } catch (e) {
+            timestamp = DateTime.now(); // Fallback si hay error de parsing
+          }
+          
+          if (msgDto.typeCode == 'SYSTEM') {
+            // Es un evento del sistema
+            messages.add(ChatMessage(
+              id: msgDto.messageId.toString(),
+              text: msgDto.body,
+              isMe: isMe,
+              timestamp: timestamp,
+              type: MessageType.systemEvent,
+              isSystemEvent: true,
+              systemSubtypeCode: msgDto.systemSubtypeCode,
+              info: msgDto.info,
+              isUnread: isUnread,
+            ));
+          } else {
+            // Es un mensaje de usuario
+            MessageType messageType = MessageType.text;
+            String? fileName;
+            String? imagePath;
+            String? filePath;
+            
+            if (msgDto.contentCode == 'IMAGE') {
+              messageType = MessageType.image;
+              imagePath = msgDto.mediaUrl;
+            } else if (msgDto.mediaUrl != null) {
+              messageType = MessageType.file;
+              filePath = msgDto.mediaUrl;
+              // Optimizar: solo hacer split si realmente necesitamos el fileName
+              final lastSlash = msgDto.mediaUrl!.lastIndexOf('/');
+              fileName = lastSlash >= 0 && lastSlash < msgDto.mediaUrl!.length - 1
+                  ? msgDto.mediaUrl!.substring(lastSlash + 1)
+                  : null;
+            }
+            
+            messages.add(ChatMessage(
+              id: msgDto.messageId.toString(),
+              text: msgDto.body,
+              isMe: isMe,
+              timestamp: timestamp,
+              type: messageType,
+              imagePath: imagePath,
+              filePath: filePath,
+              fileName: fileName,
+              isUnread: isUnread,
+            ));
+          }
+        }
+        
+        // Permitir que el hilo principal procese otros eventos entre batches
+        if (i + batchSize < messagesCount) {
+          await Future.delayed(const Duration(milliseconds: 1));
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          _messages.addAll(messages);
+          _isLoadingMessages = false;
+        });
+      }
+      
+      _scrollToBottom();
+    } catch (e) {
+      print('❌ Error loading chat messages: $e');
+      setState(() {
+        _isLoadingMessages = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    // Marcar mensajes como leídos antes de salir
+    _markMessagesAsRead();
+    
     _tabController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    if (_messages.isEmpty) return;
+    
+    try {
+      // Obtener el ID del último mensaje
+      final lastMessageId = _messages
+          .map((msg) => int.tryParse(msg.id) ?? 0)
+          .reduce((a, b) => a > b ? a : b);
+      
+      if (lastMessageId > 0) {
+        await _dealsRepository.markMessagesAsRead(widget.quoteId, lastMessageId);
+        print('✅ Mensajes marcados como leídos: lastSeenMessageId=$lastMessageId');
+      }
+    } catch (e) {
+      print('❌ Error marking messages as read: $e');
+      // No mostrar error al usuario ya que está saliendo del chat
+    }
   }
 
   @override
@@ -328,23 +491,60 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Área de chat
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
-              itemBuilder: (context, index) {
-                // Mostrar cards de acciones especiales si existen
-                if (index == _messages.length && _otherPersonAction != ChatAction.none) {
-                  return _buildActionCard(colorScheme);
-                }
-                
-                final message = _messages[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildMessageWidget(message, colorScheme),
-                );
-              },
-            ),
+            child: _isLoadingMessages
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      // Mostrar cards de acciones especiales si existen (solo si no hay mensaje del sistema correspondiente)
+                      if (index == _messages.length && _otherPersonAction != ChatAction.none) {
+                        // Verificar si ya existe un mensaje del sistema para esta acción
+                        bool hasSystemMessage = false;
+                        if (_otherPersonAction == ChatAction.counteroffer) {
+                          hasSystemMessage = _messages.any((msg) => 
+                            msg.isSystemEvent && 
+                            msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                            msg.isMe == _isMyCounteroffer
+                          );
+                        }
+                        
+                        // Solo mostrar el card temporal si no hay mensaje del sistema
+                        if (!hasSystemMessage) {
+                          return _buildActionCard(colorScheme);
+                        } else {
+                          // Si ya hay mensaje del sistema, limpiar la acción temporal
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() {
+                                _otherPersonAction = ChatAction.none;
+                              });
+                            }
+                          });
+                          return const SizedBox.shrink();
+                        }
+                      }
+                      
+                      final message = _messages[index];
+                      
+                      // Mostrar separador de mensajes no leídos
+                      final shouldShowUnreadSeparator = index > 0 && 
+                          message.isUnread && 
+                          !_messages[index - 1].isUnread;
+                      
+                      return Column(
+                        children: [
+                          if (shouldShowUnreadSeparator)
+                            _buildUnreadSeparator(colorScheme),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildMessageWidget(message, colorScheme),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
           ),
 
           // Zona de acciones (colapsable)
@@ -409,14 +609,155 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Widget _buildMessageWidget(ChatMessage message, ColorScheme colorScheme) {
+    // Si es un evento del sistema, mostrar la card correspondiente
+    if (message.isSystemEvent && message.systemSubtypeCode != null) {
+      return _buildSystemEventCard(message, colorScheme);
+    }
+    
+    // Si es un mensaje de usuario normal
     switch (message.type) {
       case MessageType.text:
-        return _buildMessageBubble(message.text, message.isMe, colorScheme);
+        return _buildMessageBubble(message.text ?? '', message.isMe, colorScheme);
       case MessageType.image:
         return _buildImageMessage(message, colorScheme);
       case MessageType.file:
         return _buildFileMessage(message, colorScheme);
+      default:
+        return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildUnreadSeparator(ColorScheme colorScheme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 1,
+              color: colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Mensajes no leídos',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemEventCard(ChatMessage message, ColorScheme colorScheme) {
+    final isMe = message.isMe;
+    final subtypeCode = message.systemSubtypeCode!;
+    
+    switch (subtypeCode) {
+      case 'CHANGE_PROPOSED':
+        // Contraoferta propuesta
+        final price = _extractPriceFromInfo(message.info);
+        return CounterofferChatCard(
+          precio: price ?? 0.0,
+          isMyCounteroffer: isMe,
+          onAceptar: () {
+            // TODO: Aceptar contraoferta
+          },
+          onRechazar: () {
+            // TODO: Rechazar contraoferta
+          },
+        );
+      case 'ACCEPTANCE_CONFIRMED':
+      case 'ACCEPTANCE_REQUEST':
+        // Trato aceptado
+        return AcceptDealChatCard(
+          isMyAcceptance: isMe,
+          fleet: _extractFleetFromInfo(message.info),
+          driver: _extractDriverFromInfo(message.info),
+        );
+      case 'CHANGE_APPLIED':
+      case 'CHANGE_ACCEPTED':
+        // Edición aplicada/aceptada
+        return EditDealChatCard(
+          acceptedDeal: _actualAcceptedDeal,
+          isMyEdit: isMe,
+        );
+      case 'QUOTE_REJECTED':
+        // Trato cancelado
+        return CancelDealChatCard(
+          isMyCancellation: isMe,
+        );
+      case 'PAYMENT_MADE':
+      case 'PAYMENT_CONFIRMED':
+        // Pago realizado
+        return PaymentMadeChatCard(
+          isMyPayment: isMe,
+        );
+      case 'SHIPMENT_RECEIVED':
+        // Paquete recibido
+        return PackageReceivedChatCard(
+          isMyReceipt: isMe,
+        );
+      case 'SHIPMENT_SENT':
+        // Carga enviada
+        return ShipmentSentChatCard(
+          isMyShipment: isMe,
+        );
+      case 'DOC_GRE_REMITENTE':
+      case 'DOC_GRE_TRANSPORTISTA':
+      case 'INFO':
+      case 'STATE_TRANSITION':
+      case 'CHANGE_REJECTED':
+      case 'ACCEPTANCE_REJECTED':
+      default:
+        // Mostrar como mensaje de texto genérico
+        return _buildMessageBubble(
+          message.info ?? message.text ?? 'Evento del sistema',
+          false,
+          colorScheme,
+        );
+    }
+  }
+
+  double? _extractPriceFromInfo(String? info) {
+    if (info == null) return null;
+    try {
+      // Intentar extraer el precio del info (puede estar en formato JSON o texto)
+      final regex = RegExp(r'(\d+\.?\d*)');
+      final match = regex.firstMatch(info);
+      if (match != null) {
+        return double.parse(match.group(1)!);
+      }
+    } catch (e) {
+      print('Error extracting price from info: $e');
+    }
+    return null;
+  }
+
+  String? _extractFleetFromInfo(String? info) {
+    if (info == null) return null;
+    // Intentar extraer la flota del info
+    final regex = RegExp(r'[Ff]lota[:\s]+([^,\n]+)');
+    final match = regex.firstMatch(info);
+    return match?.group(1)?.trim();
+  }
+
+  String? _extractDriverFromInfo(String? info) {
+    if (info == null) return null;
+    // Intentar extraer el conductor del info
+    final regex = RegExp(r'[Cc]onductor[:\s]+([^,\n]+)');
+    final match = regex.firstMatch(info);
+    return match?.group(1)?.trim();
   }
 
   Widget _buildMessageBubble(String message, bool isMe, ColorScheme colorScheme) {
@@ -477,11 +818,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     );
                   },
                 ),
-              if (message.text.isNotEmpty)
+              if (message.text != null && message.text!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Text(
-                    message.text,
+                    message.text!,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: message.isMe ? rcWhite : rcColor6,
                         ),
@@ -527,9 +868,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (message.text.isNotEmpty)
+                  if (message.text != null && message.text!.isNotEmpty)
                     Text(
-                      message.text,
+                      message.text!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: message.isMe ? rcWhite.withOpacity(0.8) : rcColor8,
                           ),
@@ -634,6 +975,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
                   acceptedDeal: widget.acceptedDeal,
                   editingMode: false,
                   isCustomer: isCustomer,
@@ -650,6 +992,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
                   acceptedDeal: widget.acceptedDeal,
                   editingMode: true,
                   isCustomer: isCustomer,
@@ -670,7 +1013,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
         if (!_actualAcceptedDeal)
@@ -712,6 +1055,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
                   acceptedDeal: _actualAcceptedDeal,
                   editingMode: false,
                   isCustomer: isCustomer,
@@ -748,7 +1092,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
         if (!_actualAcceptedDeal)
@@ -1001,15 +1345,16 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     colorScheme.secondary,
                     colorScheme,
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: true,
-                            isCustomer: isCustomer,
-                          ),
-                        ),
-                      );
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
+                  acceptedDeal: _actualAcceptedDeal,
+                  editingMode: true,
+                  isCustomer: isCustomer,
+                ),
+              ),
+            );
                     },
                   ),
                   _buildActionButton(
@@ -1017,7 +1362,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
                   _buildActionButton(
@@ -1073,15 +1418,16 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     colorScheme.secondary,
                     colorScheme,
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: true,
-                            isCustomer: isCustomer,
-                          ),
-                        ),
-                      );
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
+                  acceptedDeal: _actualAcceptedDeal,
+                  editingMode: true,
+                  isCustomer: isCustomer,
+                ),
+              ),
+            );
                     },
                   ),
                   _buildActionButton(
@@ -1089,7 +1435,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
                   _buildActionButton('Pago realizado', colorScheme.secondary, colorScheme),
@@ -1228,18 +1574,89 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: CounterofferModal(
-          precioActual: precioActual,
-          onRealizarContraoferta: (nuevoPrecio) {
-            setState(() {
-              _otherPersonAction = ChatAction.counteroffer;
-              _counterofferPrice = nuevoPrecio;
-              _isMyCounteroffer = true;
-            });
-            // TODO: Enviar contraoferta al servidor
+          precioActual: _currentQuotePrice > 0 ? _currentQuotePrice : precioActual,
+          onRealizarContraoferta: (nuevoPrecio) async {
+            Navigator.of(context).pop(); // Cerrar el modal
+            
+            // Mostrar el card de contraoferta inmediatamente (optimista)
+            if (mounted) {
+              setState(() {
+                _otherPersonAction = ChatAction.counteroffer;
+                _counterofferPrice = nuevoPrecio;
+                _isMyCounteroffer = true;
+                _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
+              });
+            }
+            
+            // Aplicar la contraoferta usando el mismo endpoint que editar cotización
+            try {
+              await _aplicarContraoferta(nuevoPrecio);
+              
+              // Recargar mensajes para obtener el evento del sistema
+              // El card se mantendrá visible hasta que llegue el mensaje del sistema
+              if (mounted) {
+                await _loadChatMessages();
+                
+                // Después de recargar, verificar si ya llegó el mensaje del sistema
+                // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
+                final hasSystemMessage = _messages.any((msg) => 
+                  msg.isSystemEvent && 
+                  msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                  msg.isMe
+                );
+                
+                if (hasSystemMessage && mounted) {
+                  // Si ya llegó el mensaje del sistema, limpiar la acción temporal
+                  setState(() {
+                    _otherPersonAction = ChatAction.none;
+                  });
+                }
+              }
+            } catch (e) {
+              // En caso de error, mantener el card visible pero mostrar error
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al enviar contraoferta: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           },
         ),
       ),
     );
+  }
+  
+  Future<void> _aplicarContraoferta(double nuevoPrecio) async {
+    try {
+      // Obtener la versión de la cotización
+      final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId);
+      
+      // Crear el cambio de precio
+      final changes = QuoteChangeRequestDto(
+        items: [
+          QuoteChangeItemDto(
+            fieldCode: 'PRICE_TOTAL',
+            oldValue: _currentQuotePrice.toStringAsFixed(2),
+            newValue: nuevoPrecio.toStringAsFixed(2),
+          ),
+        ],
+      );
+      
+      // Aplicar cambios
+      await _dealsRepository.applyQuoteChanges(
+        widget.quoteId,
+        changes,
+        ifMatch: versionDto.version.toString(),
+      );
+      
+      print('✅ Contraoferta aplicada exitosamente');
+    } catch (e) {
+      print('❌ Error applying counteroffer: $e');
+      rethrow;
+    }
   }
 
   void _mostrarModalCancelarTrato() {
@@ -1434,24 +1851,47 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   // Métodos para manejar mensajes, archivos y fotos
-  void _enviarMensaje() {
-    if (_messageController.text.trim().isNotEmpty) {
-      final newMessage = ChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        text: _messageController.text.trim(),
-        isMe: true,
-        timestamp: DateTime.now(),
-        type: MessageType.text,
-      );
-      
-      setState(() {
-        _messages.add(newMessage);
-      });
-      
+  Future<void> _enviarMensaje() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+
+    // Crear mensaje optimista
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final newMessage = ChatMessage(
+      id: tempId,
+      text: text,
+      isMe: true,
+      timestamp: DateTime.now(),
+      type: MessageType.text,
+    );
+
+    setState(() {
+      _messages.add(newMessage);
       _messageController.clear();
-      _scrollToBottom();
-      
-      // TODO: Enviar mensaje al servidor
+    });
+
+    _scrollToBottom();
+
+    // Enviar mensaje al servidor
+    try {
+      await _dealsRepository.sendTextMessage(widget.quoteId, text);
+      // Recargar mensajes para obtener el mensaje real del servidor
+      await _loadChatMessages();
+    } catch (e) {
+      // Remover mensaje optimista en caso de error
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == tempId);
+        _messageController.text = text; // Restaurar el texto
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al enviar mensaje: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1545,23 +1985,68 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Future<void> _enviarImagen(String imagePath) async {
+    final caption = _messageController.text.trim();
+    
+    // Crear mensaje optimista
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final newMessage = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      text: _messageController.text.trim(),
+      id: tempId,
+      text: caption.isNotEmpty ? caption : null,
       isMe: true,
       timestamp: DateTime.now(),
       imagePath: imagePath,
       type: MessageType.image,
     );
-    
+
     setState(() {
       _messages.add(newMessage);
       _messageController.clear();
     });
-    
+
     _scrollToBottom();
-    
-    // TODO: Subir imagen al servidor
+
+    // Subir imagen y enviar mensaje al servidor
+    try {
+      // Mostrar indicador de carga
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Subiendo imagen...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Subir imagen a Cloudinary
+      final uploadResponse = await _dealsRepository.uploadImage(imagePath);
+
+      // Enviar mensaje de imagen
+      await _dealsRepository.sendImageMessage(
+        widget.quoteId,
+        uploadResponse.secureUrl,
+        caption: caption.isNotEmpty ? caption : null,
+      );
+
+      // Recargar mensajes para obtener el mensaje real del servidor
+      await _loadChatMessages();
+    } catch (e) {
+      // Remover mensaje optimista en caso de error
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == tempId);
+        if (caption.isNotEmpty) {
+          _messageController.text = caption; // Restaurar el texto
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al enviar imagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _scrollToBottom() {

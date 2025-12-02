@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../../../../costants/api_constants.dart';
 import '../models/request_dto.dart';
@@ -6,6 +7,11 @@ import '../models/request_detail_dto.dart';
 import '../models/quote_dto.dart';
 import '../models/quote_detail_dto.dart';
 import '../models/quote_version_dto.dart';
+import '../models/company_dto.dart';
+import '../models/chat_list_dto.dart';
+import '../models/chat_dto.dart';
+import '../models/quote_change_request_dto.dart';
+import '../../../requests/data/models/image_upload_response.dart';
 
 class DealsService {
   final http.Client _client;
@@ -286,6 +292,410 @@ class DealsService {
     } catch (e) {
       print('❌ [DealsService] Error rejecting quote: $e');
       rethrow;
+    }
+  }
+
+  /// Obtiene la información de una empresa por su ID
+  Future<CompanyDto> getCompany(int companyId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/providers/company/$companyId');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return CompanyDto.fromJson(json);
+      } else {
+        throw Exception(_parseError(response, 'Failed to get company'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting company: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la lista de chats del usuario
+  /// Nota: El endpoint tiene {quoteId} en la URL pero no es un parámetro que se reemplace
+  /// El backend devuelve todos los chats del usuario
+  Future<ChatListDto> getChatList(String accessToken) async {
+    // El endpoint tiene {quoteId} en la URL pero según el usuario no es un parámetro
+    // Probamos primero sin el {quoteId} ya que devuelve múltiples chats
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/chat/list');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return ChatListDto.fromJson(json);
+      } else {
+        throw Exception(_parseError(response, 'Failed to get chat list'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting chat list: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los mensajes de un chat específico
+  Future<ChatDto> getChat(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/chat');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return ChatDto.fromJson(json);
+      } else {
+        throw Exception(_parseError(response, 'Failed to get chat'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting chat: $e');
+      rethrow;
+    }
+  }
+
+  /// Sube una imagen a Cloudinary
+  Future<ImageUploadResponse> uploadImage(String imagePath, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/media/uploads:image');
+    final file = File(imagePath);
+
+    if (!await file.exists()) {
+      throw Exception('El archivo de imagen no existe: $imagePath');
+    }
+
+    print('📤 [DealsService] Subiendo imagen: $imagePath');
+
+    // Obtener extensión del archivo y determinar tipo MIME
+    final fileName = imagePath.split('/').last;
+    final extension = fileName.split('.').last.toLowerCase();
+    final contentType = _getContentType(extension);
+
+    if (contentType == null) {
+      throw Exception('Tipo de archivo no soportado. Por favor usa una imagen (jpg, jpeg, png, etc.)');
+    }
+
+    try {
+      // Crear la petición multipart
+      final request = http.MultipartRequest('POST', url);
+
+      // Agregar headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $accessToken',
+      });
+
+      // Agregar el archivo
+      final fileStream = file.openRead();
+      final fileLength = await file.length();
+      final multipartFile = http.MultipartFile(
+        'file',
+        fileStream,
+        fileLength,
+        filename: fileName,
+        contentType: contentType,
+      );
+      request.files.add(multipartFile);
+
+      print('🚀 [DealsService] Enviando request a: $url');
+
+      // Enviar la petición
+      final streamedResponse = await _client.send(request).timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw Exception('Timeout: El servidor no respondió en 60 segundos');
+        },
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final uploadResponse = ImageUploadResponse.fromJson(json);
+        print('✅ [DealsService] Imagen subida exitosamente: ${uploadResponse.secureUrl}');
+        return uploadResponse;
+      } else {
+        throw Exception(_parseError(response, 'Failed to upload image'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error uploading image: $e');
+      rethrow;
+    }
+  }
+
+  /// Envía un mensaje de texto al chat
+  Future<void> sendTextMessage(
+    int quoteId,
+    String text,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/chat/messages');
+
+    print('🚀 [DealsService] POST $url');
+    print('📤 [DealsService] Sending text message: $text');
+
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'dedupKey': null,
+          'kind': 'TEXT',
+          'text': text,
+          'url': null,
+          'caption': null,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ [DealsService] Mensaje enviado exitosamente');
+      } else {
+        throw Exception(_parseError(response, 'Failed to send message'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error sending text message: $e');
+      rethrow;
+    }
+  }
+
+  /// Envía un mensaje de imagen al chat
+  Future<void> sendImageMessage(
+    int quoteId,
+    String imageUrl,
+    String? caption,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/chat/messages');
+
+    print('🚀 [DealsService] POST $url');
+    print('📤 [DealsService] Sending image message: $imageUrl');
+
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'dedupKey': null,
+          'kind': 'IMAGE',
+          'text': null,
+          'url': imageUrl,
+          'caption': caption,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ [DealsService] Mensaje de imagen enviado exitosamente');
+      } else {
+        throw Exception(_parseError(response, 'Failed to send image message'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error sending image message: $e');
+      rethrow;
+    }
+  }
+
+  /// Marca los mensajes como leídos
+  Future<void> markMessagesAsRead(
+    int quoteId,
+    int lastSeenMessageId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/chat/read');
+
+    print('🚀 [DealsService] PUT $url');
+    print('📤 [DealsService] Marking messages as read, lastSeenMessageId: $lastSeenMessageId');
+
+    try {
+      final response = await _client.put(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'lastSeenMessageId': lastSeenMessageId,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('✅ [DealsService] Mensajes marcados como leídos exitosamente');
+      } else {
+        throw Exception(_parseError(response, 'Failed to mark messages as read'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error marking messages as read: $e');
+      rethrow;
+    }
+  }
+
+  /// Aplica cambios a una cotización
+  Future<void> applyQuoteChanges(
+    int quoteId,
+    QuoteChangeRequestDto changes,
+    String accessToken, {
+    required String ifMatch,
+    String? idempotencyKey,
+  }) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/changes');
+
+    print('🚀 [DealsService] POST $url');
+    print('📤 [DealsService] Applying changes to quote $quoteId');
+    print('📤 [DealsService] If-Match: $ifMatch');
+    print('📤 [DealsService] Changes: ${jsonEncode(changes.toJson())}');
+
+    try {
+      final headers = <String, String>{
+        'accept': '*/*',
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+        'If-Match': ifMatch,
+      };
+
+      if (idempotencyKey != null) {
+        headers['Idempotency-Key'] = idempotencyKey;
+      }
+
+      final response = await _client.post(
+        url,
+        headers: headers,
+        body: jsonEncode(changes.toJson()),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 201 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
+        print('✅ [DealsService] Cambios aplicados exitosamente');
+      } else {
+        throw Exception(_parseError(response, 'Failed to apply quote changes'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error applying quote changes: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene el Content-Type basado en la extensión del archivo
+  http.MediaType? _getContentType(String extension) {
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return http.MediaType('image', 'jpeg');
+      case 'png':
+        return http.MediaType('image', 'png');
+      case 'gif':
+        return http.MediaType('image', 'gif');
+      case 'webp':
+        return http.MediaType('image', 'webp');
+      case 'bmp':
+        return http.MediaType('image', 'bmp');
+      default:
+        return null;
     }
   }
 

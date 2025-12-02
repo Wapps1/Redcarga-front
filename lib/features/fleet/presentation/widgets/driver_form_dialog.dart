@@ -1,121 +1,63 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
-
+import 'package:url_launcher/url_launcher.dart';
 import 'package:red_carga/core/theme.dart';
-import 'package:red_carga/core/session/session_store.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_bloc.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_event.dart';
 import 'package:red_carga/features/fleet/presentation/blocs/drivers_state.dart';
-import 'package:red_carga/features/media/data/media_upload_service.dart';
 
 class DriverFormDialog extends StatefulWidget {
   final int companyId;
-
-  const DriverFormDialog({
-    super.key,
-    required this.companyId,
-  });
+  const DriverFormDialog({super.key, required this.companyId});
 
   @override
   State<DriverFormDialog> createState() => _DriverFormDialogState();
 }
 
 class _DriverFormDialogState extends State<DriverFormDialog> {
-  int _currentStep = 0;
-
   final _emailCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-
+  final _licenseCtrl = TextEditingController();
+  final _docCtrl = TextEditingController();
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
-  String _docTypeCode = 'DNI';
-  final _docNumberCtrl = TextEditingController();
-  final _birthDateCtrl = TextEditingController(text: '2000-01-01');
   final _phoneCtrl = TextEditingController();
+  final _birthDateCtrl = TextEditingController();
   final _rucCtrl = TextEditingController();
 
-  final _licenseCtrl = TextEditingController();
-
-  File? _plateImageFile;
-  String? _plateImageUrl;
-  bool _uploadingImage = false;
-
-  final _formKey = GlobalKey<FormState>();
-
+  int _currentStep = 0;
   int? _accountId;
   String? _verificationLink;
+  bool _firebaseReady = false;
   bool _identityReady = false;
   bool _waitingCreate = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<DriversBloc>().add(const DriverCreationFlowReset());
-    });
-  }
-
-  @override
   void dispose() {
-    context.read<DriversBloc>().add(const DriverCreationFlowReset());
-
     _emailCtrl.dispose();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
-
+    _licenseCtrl.dispose();
+    _docCtrl.dispose();
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
-    _docNumberCtrl.dispose();
-    _birthDateCtrl.dispose();
     _phoneCtrl.dispose();
+    _birthDateCtrl.dispose();
     _rucCtrl.dispose();
-
-    _licenseCtrl.dispose();
-
     super.dispose();
   }
 
-  InputDecoration _dec(String label, {IconData? icon}) => InputDecoration(
-        labelText: label,
-        prefixIcon: icon != null ? Icon(icon) : null,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: rcWhite,
-      );
-
-  void _goBack() {
-    if (_currentStep == 0) return;
-    setState(() {
-      _currentStep--;
-    });
-  }
-
-  Future<void> _goNext() async {
+  void _nextStep(DriversState state) {
     switch (_currentStep) {
       case 0:
         final email = _emailCtrl.text.trim();
         final username = _usernameCtrl.text.trim();
         final password = _passwordCtrl.text;
-
-        if (email.isEmpty || !email.contains('@')) {
-          _showSnack('Ingresa un email válido');
+        if (email.isEmpty || username.isEmpty || password.length < 6) {
+          _showSnack('Completa correo, usuario y contraseña (mínimo 6).');
           return;
         }
-        if (username.isEmpty) {
-          _showSnack('Ingresa un nombre de usuario');
-          return;
-        }
-        if (password.length < 6) {
-          _showSnack('La contraseña debe tener al menos 6 caracteres');
-          return;
-        }
-
         context.read<DriversBloc>().add(
               DriverRegisterAccountRequested(
                 email: email,
@@ -123,486 +65,379 @@ class _DriverFormDialogState extends State<DriverFormDialog> {
                 password: password,
               ),
             );
-        return;
-
+        break;
       case 1:
         if (_verificationLink == null || _accountId == null) {
-          _showSnack('Aún no se ha generado el enlace de verificación.');
+          _showSnack('Aún no se genera el enlace de verificación.');
+          return;
+        }
+        if (!_firebaseReady) {
+          context.read<DriversBloc>().add(
+                DriverFirebaseLoginRequested(
+                  email: _emailCtrl.text.trim(),
+                  password: _passwordCtrl.text,
+                ),
+              );
           return;
         }
         setState(() => _currentStep = 2);
-        return;
-
+        break;
       case 2:
-        if (!(_formKey.currentState?.validate() ?? false)) return;
-
-        final birthDate = DateTime.tryParse(_birthDateCtrl.text.trim());
-        if (birthDate == null) {
-          _showSnack('Fecha de nacimiento inválida (usa AAAA-MM-DD)');
+        final doc = _docCtrl.text.trim();
+        final firstName = _firstNameCtrl.text.trim();
+        final lastName = _lastNameCtrl.text.trim();
+        final phone = _phoneCtrl.text.trim();
+        final birthRaw = _birthDateCtrl.text.trim();
+        final birthDate = DateTime.tryParse(birthRaw);
+        final ruc = _rucCtrl.text.trim();
+        if (doc.isEmpty ||
+            firstName.isEmpty ||
+            lastName.isEmpty ||
+            phone.isEmpty ||
+            birthRaw.isEmpty ||
+            birthDate == null) {
+          _showSnack('Completa los datos de identidad (fecha yyyy-MM-dd).');
           return;
         }
-        if (_accountId == null) {
-          _showSnack('Primero crea y verifica la cuenta del conductor.');
-          return;
-        }
-
-        final fullName =
-            '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim();
-
         context.read<DriversBloc>().add(
               DriverIdentitySubmitted(
                 accountId: _accountId!,
-                fullName: fullName,
-                docTypeCode: _docTypeCode,
-                docNumber: _docNumberCtrl.text.trim(),
+                fullName: '$firstName $lastName',
+                docTypeCode: 'DNI',
+                docNumber: doc,
                 birthDate: birthDate,
-                phone: _phoneCtrl.text.trim(),
-                ruc: _rucCtrl.text.trim(),
+                phone: phone,
+                ruc: ruc.isEmpty ? '-' : ruc,
               ),
             );
-        return;
-
+        break;
       case 3:
-        _submit();
-        return;
+        final license = _licenseCtrl.text.trim();
+        if (license.isEmpty) {
+          _showSnack('Ingresa el número de licencia.');
+          return;
+        }
+        setState(() => _waitingCreate = true);
+        context.read<DriversBloc>().add(
+              CreateDriverRequested(
+                companyId: widget.companyId,
+                accountId: _accountId!,
+                licenseNumber: license,
+                active: true,
+                plateImageUrl: null,
+              ),
+            );
+        break;
     }
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
-  }
-
-  Future<void> _pickAndUploadImage() async {
-    final picked =
-        await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
-
-    setState(() {
-      _plateImageFile = File(picked.path);
-      _uploadingImage = true;
-    });
-
-    try {
-      final uploader = MediaUploadService(SessionStore());
-      final url = await uploader.uploadImage(
-        file: _plateImageFile!,
-        subjectType: 'DRIVER_PHOTO',
-        subjectKey: 'driver_${DateTime.now().millisecondsSinceEpoch}',
-      );
-
-      setState(() {
-        _plateImageUrl = url;
-      });
-    } catch (e) {
-      _showSnack('Error al subir imagen: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _uploadingImage = false;
-        });
-      }
-    }
-  }
-
-  void _submit() {
-    final license = _licenseCtrl.text.trim();
-    if (license.isEmpty) {
-      _showSnack('Ingresa el número de licencia');
-      return;
-    }
-
-    if (_accountId == null) {
-      _showSnack('No hay una cuenta de conductor asociada.');
-      return;
-    }
-
-    context.read<DriversBloc>().add(
-          CreateDriverRequested(
-            companyId: widget.companyId,
-            accountId: _accountId!,
-            licenseNumber: license,
-            plateImageUrl: _plateImageUrl,
-          ),
-        );
-
-    setState(() {
-      _waitingCreate = true;
-    });
-  }
-
-  Widget _buildStepContent() {
-    switch (_currentStep) {
-      case 0:
-        return _buildStepIam();
-      case 1:
-        return _buildStepVerifyEmail();
-      case 2:
-        return _buildStepIdentity();
-      case 3:
-      default:
-        return _buildStepDriverData();
-    }
-  }
-
-  Widget _buildStepIam() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: _emailCtrl,
-          decoration: _dec('Email del conductor', icon: Icons.email_outlined),
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _usernameCtrl,
-          decoration: _dec('Username (para login)', icon: Icons.person),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _passwordCtrl,
-          decoration: _dec('Contraseña temporal', icon: Icons.lock_outline),
-          obscureText: true,
-          textInputAction: TextInputAction.done,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'El proveedor compartirá estas credenciales con el conductor.',
-          style: TextStyle(fontSize: 12, color: rcColor8),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepVerifyEmail() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '2. Verifica el correo',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Abre el siguiente enlace para confirmar el correo del conductor.',
-          style: TextStyle(fontSize: 13, color: rcColor6),
-        ),
-        const SizedBox(height: 12),
-        if (_verificationLink != null)
-          Row(
-            children: [
-              Expanded(
-                child: SelectableText(
-                  _verificationLink!,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: rcColor4,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Copiar enlace',
-                onPressed: () async {
-                  await Clipboard.setData(
-                    ClipboardData(text: _verificationLink!),
-                  );
-                  _showSnack('Enlace copiado');
-                },
-                icon: const Icon(Icons.copy, color: rcColor4),
-              ),
-            ],
-          )
-        else
-          const Text(
-            'Generando enlace...',
-            style: TextStyle(fontSize: 13, color: rcColor8),
-          ),
-        const SizedBox(height: 12),
-        const Text(
-          'Cuando ya se haya verificado el correo, presiona "Siguiente".',
-          style: TextStyle(fontSize: 13, color: rcColor8),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepIdentity() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: _firstNameCtrl,
-          decoration: _dec('Nombre', icon: Icons.badge_outlined),
-          textInputAction: TextInputAction.next,
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Ingresa el nombre' : null,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _lastNameCtrl,
-          decoration: _dec('Apellido', icon: Icons.badge),
-          textInputAction: TextInputAction.next,
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Ingresa el apellido' : null,
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const Icon(Icons.assignment_ind_outlined, size: 20, color: rcColor8),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _docTypeCode,
-                decoration: _dec('Tipo de documento'),
-                items: const [
-                  DropdownMenuItem(value: 'DNI', child: Text('DNI')),
-                  DropdownMenuItem(
-                    value: 'CE',
-                    child: Text('Carné de Extranjería'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _docTypeCode = value;
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _docNumberCtrl,
-          decoration: _dec('N° de documento', icon: Icons.credit_card),
-          textInputAction: TextInputAction.next,
-          validator: (v) {
-            final value = (v ?? '').trim();
-            if (value.isEmpty) return 'Ingresa el número de documento';
-            return null;
-          },
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _birthDateCtrl,
-          decoration: _dec(
-            'Fecha de nacimiento (AAAA-MM-DD)',
-            icon: Icons.calendar_today,
-          ),
-          keyboardType: TextInputType.datetime,
-          textInputAction: TextInputAction.next,
-          validator: (v) {
-            final value = (v ?? '').trim();
-            if (value.isEmpty) return 'Ingresa la fecha de nacimiento';
-            if (DateTime.tryParse(value) == null) {
-              return 'Formato inválido, usa AAAA-MM-DD';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _phoneCtrl,
-          decoration: _dec('Teléfono', icon: Icons.phone_outlined),
-          keyboardType: TextInputType.phone,
-          textInputAction: TextInputAction.next,
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Ingresa el teléfono' : null,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _rucCtrl,
-          decoration:
-              _dec('RUC (empresa o persona natural)', icon: Icons.apartment),
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.done,
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Ingresa el RUC' : null,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepDriverData() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextFormField(
-          controller: _licenseCtrl,
-          decoration:
-              _dec('N° de licencia', icon: Icons.credit_card_outlined),
-          textInputAction: TextInputAction.done,
-        ),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: _uploadingImage
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.image_outlined),
-            label: Text(
-              _plateImageUrl == null
-                  ? 'Subir foto de documento/placa'
-                  : 'Cambiar foto',
-              style: const TextStyle(color: rcColor5),
-            ),
-            onPressed: _uploadingImage ? null : _pickAndUploadImage,
-          ),
-        ),
-        if (_plateImageFile != null || _plateImageUrl != null) ...[
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: 140,
-              width: double.infinity,
-              child: _plateImageFile != null
-                  ? Image.file(
-                      _plateImageFile!,
-                      fit: BoxFit.cover,
-                    )
-                  : Image.network(
-                      _plateImageUrl!,
-                      fit: BoxFit.cover,
-                    ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  String get _title {
-    switch (_currentStep) {
-      case 0:
-        return 'Cuenta de acceso (IAM)';
-      case 1:
-        return 'Verificación de email';
-      case 2:
-        return 'Datos de identidad';
-      case 3:
-      default:
-        return 'Datos del conductor';
-    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   bool _isProcessing(DriversState state) {
     if (_currentStep == 0) return state.registeringAccount;
+    if (_currentStep == 1) return state.firebaseSigningIn;
     if (_currentStep == 2) return state.verifyingIdentity;
     if (_currentStep == 3) return state.creating;
     return false;
   }
 
+  Future<void> _openVerificationLink() async {
+    if (_verificationLink == null) return;
+    final uri = Uri.tryParse(_verificationLink!);
+    if (uri == null) {
+      _showSnack('Enlace inválido.');
+      return;
+    }
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      _showSnack('No se pudo abrir el enlace.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocListener<DriversBloc, DriversState>(
-      listenWhen: (prev, curr) =>
-          prev.pendingAccountId != curr.pendingAccountId ||
-          prev.verificationLink != curr.verificationLink ||
-          prev.identityVerified != curr.identityVerified ||
-          prev.creationMessage != curr.creationMessage ||
-          prev.creating != curr.creating ||
-          prev.registeringAccount != curr.registeringAccount ||
-          prev.verifyingIdentity != curr.verifyingIdentity,
-      listener: (context, state) {
-        if (!mounted) return;
+    const totalSteps = 4;
 
-        if (state.creationMessage != null &&
-            !state.registeringAccount &&
-            !state.verifyingIdentity &&
-            !state.creating) {
-          _showSnack(state.creationMessage!);
-        }
-
-        if (state.pendingAccountId != null &&
-            state.pendingAccountId != _accountId) {
-          setState(() {
-            _accountId = state.pendingAccountId;
-            _verificationLink = state.verificationLink;
-            _currentStep = 1;
-          });
-          _showSnack('Cuenta creada. Verifica el correo del conductor.');
-        }
-
-        if (state.identityVerified && !_identityReady) {
-          setState(() {
-            _identityReady = true;
-            _currentStep = 3;
-          });
-          _showSnack('Identidad verificada correctamente.');
-        }
-
-        if (_waitingCreate && !state.creating) {
-          if (state.creationMessage == null) {
-            _showSnack('Conductor creado correctamente.');
-            Navigator.of(context).pop();
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: BlocConsumer<DriversBloc, DriversState>(
+        listenWhen: (prev, curr) =>
+            prev.pendingAccountId != curr.pendingAccountId ||
+            prev.verificationLink != curr.verificationLink ||
+            prev.firebaseReady != curr.firebaseReady ||
+            prev.identityVerified != curr.identityVerified ||
+            prev.creationMessage != curr.creationMessage ||
+            prev.creating != curr.creating,
+        listener: (context, state) {
+          if (state.pendingAccountId != null &&
+              state.pendingAccountId != _accountId) {
+            setState(() {
+              _accountId = state.pendingAccountId;
+              _verificationLink = state.verificationLink;
+              _currentStep = 1;
+            });
+            _showSnack('Se envió un correo de verificación.');
           }
-          setState(() {
-            _waitingCreate = false;
-          });
-        }
-      },
-      child: BlocBuilder<DriversBloc, DriversState>(
+          if (state.firebaseReady && !_firebaseReady) {
+            setState(() {
+              _firebaseReady = true;
+              _currentStep = 2;
+            });
+            _showSnack('Correo verificado, continúa con la identidad.');
+          }
+          if (state.identityVerified && !_identityReady) {
+            setState(() {
+              _identityReady = true;
+              _currentStep = 3;
+            });
+            _showSnack('Identidad verificada correctamente.');
+          }
+          if (state.creationMessage != null) {
+            _showSnack(state.creationMessage!);
+          }
+          if (_waitingCreate && !state.creating) {
+            setState(() => _waitingCreate = false);
+            if (state.creationMessage == null) Navigator.of(context).pop();
+          }
+        },
         builder: (context, state) {
-          final processing = _isProcessing(state);
-
-          return AlertDialog(
-            backgroundColor: rcColor1,
-            title: Text(
-              _title,
-              style:
-                  const TextStyle(color: rcColor6, fontWeight: FontWeight.w700),
+          final isLastStep = _currentStep == totalSteps - 1;
+          return Container(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+            decoration: BoxDecoration(
+              color: rcColor1,
+              borderRadius: BorderRadius.circular(28),
             ),
-            content: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: _buildStepContent(),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancelar', style: TextStyle(color: rcColor6)),
-              ),
-              if (_currentStep > 0)
-                TextButton(
-                  onPressed: processing ? null : _goBack,
-                  child: const Text('Atrás', style: TextStyle(color: rcColor6)),
-                ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: rcColor4,
-                  foregroundColor: rcWhite,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Registrar Conductor',
+                  style: TextStyle(
+                    color: rcColor6,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                onPressed: processing ? null : _goNext,
-                child: processing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(rcWhite),
+                const SizedBox(height: 16),
+                _StepperHeader(current: _currentStep, total: totalSteps),
+                const SizedBox(height: 20),
+                _buildStepContent(),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _isProcessing(state)
+                            ? null
+                            : () {
+                                context
+                                    .read<DriversBloc>()
+                                    .add(const DriverCreationFlowReset());
+                                Navigator.of(context).pop();
+                              },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: rcColor4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
                         ),
-                      )
-                    : Text(_currentStep == 3 ? 'Crear' : 'Siguiente'),
-              ),
-            ],
+                        child: const Text(
+                          'Cancelar',
+                          style: TextStyle(color: rcColor4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isProcessing(state)
+                            ? null
+                            : () => _nextStep(state),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: rcColor4,
+                          foregroundColor: rcWhite,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: _isProcessing(state)
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(rcWhite),
+                                ),
+                              )
+                            : Text(isLastStep ? 'Crear' : 'Siguiente'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           );
         },
       ),
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case 0:
+        return Column(
+          children: [
+            _FormField(controller: _emailCtrl, label: 'Correo electrónico'),
+            const SizedBox(height: 12),
+            _FormField(controller: _usernameCtrl, label: 'Nombre de usuario'),
+            const SizedBox(height: 12),
+            _FormField(
+              controller: _passwordCtrl,
+              label: 'Contraseña',
+              obscure: true,
+            ),
+          ],
+        );
+      case 1:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Text(
+              'Pídele al conductor que verifique su correo usando el enlace generado.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: rcColor6),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: rcWhite,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: rcColor8.withOpacity(0.4)),
+              ),
+              child: _verificationLink == null
+                  ? const Text(
+                      'Enlace pendiente de generación...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: rcColor8),
+                    )
+                  : TextButton(
+                      onPressed: _openVerificationLink,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        alignment: Alignment.center,
+                      ),
+                      child: const Text(
+                        'Link de verificación',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: rcColor4,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Luego presiona “Siguiente” para iniciar sesión del conductor en Firebase.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: rcColor8),
+            ),
+          ],
+        );
+      case 2:
+        return Column(
+          children: [
+            _FormField(controller: _docCtrl, label: 'Documento (DNI)'),
+            const SizedBox(height: 12),
+            _FormField(controller: _firstNameCtrl, label: 'Nombres'),
+            const SizedBox(height: 12),
+            _FormField(controller: _lastNameCtrl, label: 'Apellidos'),
+            const SizedBox(height: 12),
+            _FormField(controller: _phoneCtrl, label: 'Teléfono'),
+            const SizedBox(height: 12),
+            _FormField(
+              controller: _birthDateCtrl,
+              label: 'Fecha de nacimiento (yyyy-MM-dd)',
+            ),
+            const SizedBox(height: 12),
+            _FormField(controller: _rucCtrl, label: 'RUC (opcional)'),
+          ],
+        );
+      case 3:
+        return Column(
+          children: [
+            _FormField(controller: _licenseCtrl, label: 'Número de licencia'),
+          ],
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+class _FormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final bool obscure;
+
+  const _FormField({
+    required this.controller,
+    required this.label,
+    this.obscure = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: rcWhite,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
+  }
+}
+
+class _StepperHeader extends StatelessWidget {
+  final int current;
+  final int total;
+  const _StepperHeader({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(total * 2 - 1, (index) {
+        if (index.isOdd) {
+          return Expanded(
+            child: Container(
+              height: 2,
+              color: rcColor8.withOpacity(0.3),
+            ),
+          );
+        }
+        final stepIndex = index ~/ 2;
+        final isActive = stepIndex <= current;
+        return CircleAvatar(
+          radius: 16,
+          backgroundColor: isActive ? rcColor4 : rcColor8.withOpacity(0.3),
+          child: Text(
+            '${stepIndex + 1}',
+            style: const TextStyle(color: rcWhite),
+          ),
+        );
+      }),
     );
   }
 }

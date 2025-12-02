@@ -13,6 +13,8 @@ class DriversState {
   final String? verificationLink;
   final bool identityVerified;
   final String? creationMessage;
+  final bool firebaseSigningIn;
+  final bool firebaseReady;
 
   const DriversState({
     this.status = DriversStatus.initial,
@@ -25,6 +27,8 @@ class DriversState {
     this.verificationLink,
     this.identityVerified = false,
     this.creationMessage,
+    this.firebaseSigningIn = false,
+    this.firebaseReady = false,
   });
 
   static const _kNoValue = Object();
@@ -40,6 +44,8 @@ class DriversState {
     Object? verificationLink = _kNoValue,
     bool? identityVerified,
     Object? creationMessage = _kNoValue,
+    bool? firebaseSigningIn,
+    bool? firebaseReady,
   }) {
     return DriversState(
       status: status ?? this.status,
@@ -58,6 +64,8 @@ class DriversState {
       creationMessage: creationMessage == _kNoValue
           ? this.creationMessage
           : creationMessage as String?,
+      firebaseSigningIn: firebaseSigningIn ?? this.firebaseSigningIn,
+      firebaseReady: firebaseReady ?? this.firebaseReady,
     );
   }
 }

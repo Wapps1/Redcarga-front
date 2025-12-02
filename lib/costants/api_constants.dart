@@ -26,8 +26,10 @@ class ApiConstants {
   static String uploadImage({
     required String subjectType,
     required String subjectKey,
-  }) =>
-    '$baseUrl/media/uploads:image'
-    '?subjectType=$subjectType&subjectKey=$subjectKey';
+  }) => '$baseUrl/media/uploads:image'
+        '?subjectType=$subjectType&subjectKey=$subjectKey';
+
+  // Provider - Company Operators endpoints
+  static String providerCompanyOperators(int companyId) => '$baseUrl/providers/company/$companyId/operators';
 
 }

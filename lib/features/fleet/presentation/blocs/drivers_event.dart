@@ -85,3 +85,16 @@ class CreateDriverRequested extends DriversEvent {
   List<Object?> get props =>
       [companyId, accountId, licenseNumber, active, plateImageUrl];
 }
+
+class DriverFirebaseLoginRequested extends DriversEvent {
+  final String email;
+  final String password;
+
+  const DriverFirebaseLoginRequested({
+    required this.email,
+    required this.password,
+  });
+
+  @override
+  List<Object?> get props => [email, password];
+}

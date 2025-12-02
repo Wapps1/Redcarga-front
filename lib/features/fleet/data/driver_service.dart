@@ -122,4 +122,45 @@ class DriverService {
       'Delete driver failed (${res.statusCode}): $backendMessage',
     );
   }
+
+  Future<void> registerOperator({
+    required int companyId,
+    required int accountId,
+    int roleId = 2,
+  }) async {
+    final session = await _sessionStore.getAppSession();
+    if (session == null) throw Exception('No hay sesión');
+
+    final uri = Uri.parse(ApiConstants.providerCompanyOperators(companyId));
+    final payload = {
+      'operatorId': accountId,
+      'roleId': roleId,
+    };
+
+    final res = await http.post(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': '${session.tokenType.value} ${session.accessToken}',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (res.statusCode == 200 ||
+        res.statusCode == 201 ||
+        res.statusCode == 409) {
+      return;
+    }
+
+    String backendMessage = res.body;
+    try {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      backendMessage = decoded['message']?.toString() ?? backendMessage;
+    } catch (_) {}
+
+    throw Exception(
+      'Register operator failed (${res.statusCode}): $backendMessage',
+    );
+  }
 }

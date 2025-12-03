@@ -23,6 +23,8 @@ class SessionStore {
   static const String _keyFirebaseExpiresAt = 'firebase_expiresAt';
 
   static const String _keyAppCompanyRoles = 'app_company_roles_csv';
+  static const String _keyAppUsername = 'app_username';
+  static const String _keyAppEmail = 'app_email';
 
   /// Guarda la sesión de la app
   Future<void> saveAppSession(AppSession session) async {
@@ -43,10 +45,16 @@ class SessionStore {
       session.companyRoles.map((r) => r.value).join(','),
     );
 
-    if (session.companyId != null) {
-      await prefs.setInt(_keyAppCompanyId, session.companyId!);
+    if (session.username != null) {
+      await prefs.setString(_keyAppUsername, session.username!);
     } else {
-      await prefs.remove(_keyAppCompanyId);
+      await prefs.remove(_keyAppUsername);
+    }
+
+    if (session.email != null) {
+      await prefs.setString(_keyAppEmail, session.email!);
+    } else {
+      await prefs.remove(_keyAppEmail);
     }
 
     print(
@@ -110,6 +118,8 @@ class SessionStore {
       roles: roles,
       companyId: companyId,
       companyRoles: companyRoles,
+      username: prefs.getString(_keyAppUsername),
+      email: prefs.getString(_keyAppEmail),
     );
   }
 
@@ -121,6 +131,9 @@ class SessionStore {
     await prefs.setString(_keyFirebaseUid, session.uid);
     await prefs.setString(_keyFirebaseEmail, session.email);
     await prefs.setInt(_keyFirebaseExpiresAt, session.expiresAt);
+    await prefs.remove(_keyAppCompanyId);
+    await prefs.remove(_keyAppUsername);
+    await prefs.remove(_keyAppEmail);
     
     print('💾 [SessionStore] FirebaseSession guardada - UID: ${session.uid}');
   }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme.dart';
+import '../../../../core/session/auth_bloc.dart';
+import '../../data/deals_service.dart';
 
 class ResumenCotizacionPage extends StatefulWidget {
   final Map<String, dynamic> solicitud;
@@ -17,9 +20,10 @@ class ResumenCotizacionPage extends StatefulWidget {
 
 class _ResumenCotizacionPageState extends State<ResumenCotizacionPage> {
   final TextEditingController _precioController = TextEditingController(text: 's/1000');
-  final TextEditingController _comentarioController = TextEditingController(
-    text: 'No hay problema para transportar las cargas seleccionadas porque se cuenta con capacidad de hasta....',
-  );
+  final TextEditingController _comentarioController = TextEditingController();
+  final DealsService _dealsService = DealsService();
+  
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -213,29 +217,6 @@ class _ResumenCotizacionPageState extends State<ResumenCotizacionPage> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        // Botón para seleccionar artículos (solo visualización)
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: rcColor7,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Seleccionar artículos',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: rcColor6,
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -288,30 +269,6 @@ class _ResumenCotizacionPageState extends State<ResumenCotizacionPage> {
                   fontSize: 14,
                   color: rcColor6,
                 ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildGradientButton(
-                'Estimar precio',
-                Icons.calculate,
-                () {
-                  // Estimar precio
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildOutlinedButton(
-                'Subir cotización',
-                Icons.upload_file,
-                () {
-                  // Subir cotización
-                },
               ),
             ),
           ],
@@ -373,26 +330,15 @@ class _ResumenCotizacionPageState extends State<ResumenCotizacionPage> {
       child: Column(
         children: [
           _buildGradientButton(
-            'Mandar Cotización',
+            _isSubmitting ? 'Enviando...' : 'Mandar Cotización',
             null,
-            () {
-              // Enviar cotización
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cotización enviada exitosamente'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            },
+            _isSubmitting ? null : () => _submitQuote(),
           ),
           const SizedBox(height: 12),
           _buildOutlinedButton(
             'Rechazar Solicitud',
             null,
-            () {
-              // Rechazar solicitud
-            },
+            () => _rejectRequest(),
           ),
         ],
       ),
@@ -468,6 +414,181 @@ class _ResumenCotizacionPageState extends State<ResumenCotizacionPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _submitQuote() async {
+    final requestId = widget.solicitud['requestId'] as int?;
+    if (requestId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: ID de solicitud no válido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Obtener companyId desde AuthBloc
+    final authState = context.read<AuthBloc>().state;
+    if (authState is! AuthSignedIn || authState.session.companyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró información de la empresa'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final companyId = authState.session.companyId!;
+
+    // Extraer precio del texto (remover "s/" y convertir a double)
+    final precioText = _precioController.text.trim();
+    final precioMatch = RegExp(r'[\d.]+').firstMatch(precioText);
+    if (precioMatch == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor ingresa un precio válido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final totalAmount = double.tryParse(precioMatch.group(0) ?? '0') ?? 0.0;
+    if (totalAmount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El precio debe ser mayor a 0'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Preparar items para la cotización
+    final items = <Map<String, dynamic>>[];
+    
+    for (final articulo in widget.articulosSeleccionados) {
+      // El itemId debe estar presente
+      final requestItemId = articulo['itemId'] as int?;
+      if (requestItemId == null || requestItemId == 0) {
+        print('⚠️ [ResumenCotizacion] Artículo sin itemId válido: $articulo');
+        continue; // Saltar este artículo
+      }
+      
+      final cantidadSeleccionada = articulo['cantidadSeleccionada'] as int? ?? articulo['cantidad'] as int;
+      if (cantidadSeleccionada <= 0) {
+        print('⚠️ [ResumenCotizacion] Artículo con cantidad inválida: $cantidadSeleccionada');
+        continue; // Saltar este artículo
+      }
+      
+      final qty = cantidadSeleccionada.toDouble();
+      
+      items.add({
+        'requestItemId': requestItemId,
+        'qty': qty,
+      });
+    }
+    
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No hay artículos válidos para cotizar'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() {
+        _isSubmitting = false;
+      });
+      return;
+    }
+    
+    print('📦 [ResumenCotizacion] Items preparados: $items');
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      await _dealsService.createQuote(
+        requestId: requestId,
+        companyId: companyId,
+        totalAmount: totalAmount,
+        currency: 'PEN',
+        items: items,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cotización enviada exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      setState(() {
+        _isSubmitting = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al enviar cotización: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectRequest() async {
+    final requestId = widget.solicitud['requestId'] as int?;
+    if (requestId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: ID de solicitud no válido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar diálogo de confirmación
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rechazar Solicitud'),
+        content: const Text('¿Estás seguro de que deseas rechazar esta solicitud?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Rechazar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Nota: El endpoint de rechazar requiere un quoteId, pero aquí solo tenemos requestId
+    // Por ahora, solo mostramos un mensaje. Si necesitas rechazar directamente la solicitud,
+    // necesitarías otro endpoint o crear una cotización con estado rechazado.
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Para rechazar, primero debes crear una cotización. Usa el botón "Mandar Cotización" con un precio de 0.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {

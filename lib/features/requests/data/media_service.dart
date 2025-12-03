@@ -115,6 +115,94 @@ class MediaService {
     }
   }
 
+  /// Sube un PDF al servidor y retorna la respuesta con fileId y cdnUrl
+  Future<Map<String, dynamic>> uploadPdf(String pdfPath) async {
+    final url = Uri.parse(ApiConstants.uploadPdfEndpoint);
+    final file = File(pdfPath);
+
+    if (!await file.exists()) {
+      throw Exception('El archivo PDF no existe: $pdfPath');
+    }
+
+    // Obtener token de sesión
+    final appSession = await _sessionStore.getAppSession();
+    
+    if (appSession == null) {
+      throw Exception('No hay sesión activa. Por favor inicia sesión nuevamente.');
+    }
+
+    final token = appSession.accessToken;
+    if (token.isEmpty) {
+      throw Exception('Token de acceso no disponible.');
+    }
+
+    // Verificar si el token está expirado
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now >= appSession.expiresAt) {
+      throw Exception('Sesión expirada. Por favor, inicia sesión nuevamente');
+    }
+
+    print('📤 [MediaService] Subiendo PDF: $pdfPath');
+    print('📤 [MediaService] Tamaño del archivo: ${await file.length()} bytes');
+
+    try {
+      // Crear la petición multipart
+      final request = http.MultipartRequest('POST', url);
+      
+      // Agregar headers
+      request.headers.addAll({
+        'Authorization': '${appSession.tokenType.value} $token',
+      });
+
+      // Agregar el archivo PDF
+      final fileName = pdfPath.split('/').last;
+      final fileStream = file.openRead();
+      final fileLength = await file.length();
+      final multipartFile = http.MultipartFile(
+        'file',
+        fileStream,
+        fileLength,
+        filename: fileName,
+        contentType: http.MediaType('application', 'pdf'),
+      );
+      request.files.add(multipartFile);
+      
+      print('📤 [MediaService] Archivo preparado: $fileName');
+
+      print('🚀 [MediaService] Enviando request a: $url');
+
+      // Enviar la petición
+      final streamedResponse = await _client.send(request).timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw Exception('Timeout: El servidor no respondió en 60 segundos');
+        },
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📥 [MediaService] Response status: ${response.statusCode}');
+      print('📥 [MediaService] Response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final json = jsonDecode(response.body) as Map<String, dynamic>;
+          print('✅ [MediaService] PDF subido exitosamente: ${json['cdnUrl']}');
+          return json;
+        } catch (e) {
+          throw Exception('Error al parsear respuesta: $e');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('No autorizado. Por favor inicia sesión nuevamente.');
+      } else {
+        throw Exception('Error al subir PDF: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('❌ [MediaService] Error: $e');
+      rethrow;
+    }
+  }
+
   /// Obtiene el Content-Type basado en la extensión del archivo
   http.MediaType? _getContentType(String extension) {
     switch (extension) {

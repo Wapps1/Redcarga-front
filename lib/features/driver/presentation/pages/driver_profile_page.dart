@@ -1,22 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:http/http.dart' as http;
+
 import 'package:red_carga/core/session/auth_bloc.dart';
+import 'package:red_carga/core/session/session_store.dart';
 import 'package:red_carga/core/theme.dart';
-import 'package:red_carga/features/customers/presentation/pages/settings_page.dart';
-import 'package:red_carga/features/customers/presentation/pages/reset_password_page.dart';
 import 'package:red_carga/features/customers/presentation/pages/help_center_page.dart';
+import 'package:red_carga/features/customers/presentation/pages/reset_password_page.dart';
+import 'package:red_carga/features/customers/presentation/pages/settings_page.dart';
+import 'package:red_carga/features/driver/data/driver_identity_repository_impl.dart';
+import 'package:red_carga/features/driver/data/driver_identity_service.dart';
+import 'package:red_carga/features/driver/presentation/blocs/driver_profile_bloc.dart';
+import 'package:red_carga/features/driver/presentation/blocs/driver_profile_event.dart';
+import 'package:red_carga/features/driver/presentation/blocs/driver_profile_state.dart';
 
 class DriverProfilePage extends StatelessWidget {
   const DriverProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) => DriverProfileBloc(
+        identityRepository: DriverIdentityRepositoryImpl(
+          service: DriverIdentityService(
+            httpClient: http.Client(),
+          ),
+        ),
+        sessionStore: SessionStore(),
+      )..add(const DriverProfileStarted()),
+      child: const _DriverProfileView(),
+    );
+  }
+}
+
+class _DriverProfileView extends StatelessWidget {
+  const _DriverProfileView();
+
+  @override
+  Widget build(BuildContext context) {
     final colorScheme = MaterialTheme.lightScheme();
-    
-    // TODO: Obtener datos reales del usuario desde la sesión
-    final userName = 'Juan Perez';
-    final email = 'jcontreras@hotmail.com';
-    final licenseNumber = 'A1B2C3D4E5';
 
     return Scaffold(
       body: Container(
@@ -33,7 +55,6 @@ class DriverProfilePage extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              // Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
@@ -48,9 +69,7 @@ class DriverProfilePage extends StatelessWidget {
                     ),
                     const Spacer(),
                     IconButton(
-                      onPressed: () {
-                        // TODO: Menú de opciones
-                      },
+                      onPressed: () {},
                       icon: const Icon(
                         Icons.more_vert,
                         color: rcWhite,
@@ -59,8 +78,6 @@ class DriverProfilePage extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // Contenido
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.only(top: 20),
@@ -71,61 +88,75 @@ class DriverProfilePage extends StatelessWidget {
                       topRight: Radius.circular(30),
                     ),
                   ),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Información del usuario
-                        _buildUserInfoSection(context, userName, email, licenseNumber),
-                        
-                        const SizedBox(height: 32),
-                        
-                        // Opciones del menú
-                        _buildMenuOption(
-                          context,
-                          'Configuración',
-                          Icons.settings,
-                          () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const SettingsPage(),
+                  child: BlocBuilder<DriverProfileBloc, DriverProfileState>(
+                    builder: (context, state) {
+                      if (state is DriverProfileInitial || state is DriverProfileLoading) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (state is DriverProfileError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              state.message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        );
+                      }
+
+                      if (state is DriverProfileLoaded) {
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildUserInfoSection(
+                                context: context,
+                                fullName: state.fullName,
+                                username: state.username,
+                                email: state.email,
+                                docNumber: state.docNumber,
+                                phone: state.phone,
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _buildMenuOption(
-                          context,
-                          'Reestablecer Contraseña',
-                          Icons.lock_reset,
-                          () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const ResetPasswordPage(),
+                              const SizedBox(height: 32),
+                              _buildMenuOption(
+                                context,
+                                'Configuración',
+                                Icons.settings,
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                                ),
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _buildMenuOption(
-                          context,
-                          'Centro de Ayuda',
-                          Icons.help_outline,
-                          () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const HelpCenterPage(),
+                              const SizedBox(height: 12),
+                              _buildMenuOption(
+                                context,
+                                'Reestablecer Contraseña',
+                                Icons.lock_reset,
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+                                ),
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Botón cerrar sesión
-                        _buildLogoutButton(context),
-                      ],
-                    ),
+                              const SizedBox(height: 12),
+                              _buildMenuOption(
+                                context,
+                                'Centro de Ayuda',
+                                Icons.help_outline,
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const HelpCenterPage()),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              _buildLogoutButton(context),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ),
               ),
@@ -136,12 +167,14 @@ class DriverProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildUserInfoSection(
-    BuildContext context,
-    String userName,
-    String email,
-    String licenseNumber,
-  ) {
+  Widget _buildUserInfoSection({
+    required BuildContext context,
+    required String fullName,
+    required String username,
+    required String email,
+    required String docNumber,
+    required String phone,
+  }) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -157,7 +190,6 @@ class DriverProfilePage extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Foto de perfil
           Container(
             width: 100,
             height: 100,
@@ -173,29 +205,30 @@ class DriverProfilePage extends StatelessWidget {
               child: Image.asset(
                 'assets/images/profile_placeholder.png',
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.person,
-                    size: 50,
-                    color: rcColor4,
-                  );
-                },
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.person,
+                  size: 50,
+                  color: rcColor4,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          
-          // Nombre
           Text(
-            userName,
+            fullName,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: rcColor6,
                   fontWeight: FontWeight.bold,
                 ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            '@$username',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: rcColor8,
+                ),
+          ),
           const SizedBox(height: 8),
-          
-          // Email
           Text(
             email,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -203,35 +236,47 @@ class DriverProfilePage extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 16),
-          
-          // Divider
           Divider(
             color: rcColor8.withOpacity(0.2),
             thickness: 1,
           ),
           const SizedBox(height: 16),
-          
-          // Número de licencia
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.badge_outlined,
-                color: rcColor4,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Licencia: $licenseNumber',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: rcColor6,
-                      fontWeight: FontWeight.w500,
-                    ),
-              ),
-            ],
+          _buildInfoRow(
+            context: context,
+            icon: Icons.badge_outlined,
+            label: 'Documento',
+            value: docNumber,
+          ),
+          const SizedBox(height: 12),
+          _buildInfoRow(
+            context: context,
+            icon: Icons.phone_outlined,
+            label: 'Teléfono',
+            value: phone.isEmpty ? 'Sin registrar' : phone,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: rcColor4, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          '$label: $value',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: rcColor6,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+      ],
     );
   }
 
@@ -262,11 +307,7 @@ class DriverProfilePage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  color: rcColor4,
-                  size: 24,
-                ),
+                Icon(icon, color: rcColor4, size: 24),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
@@ -277,7 +318,7 @@ class DriverProfilePage extends StatelessWidget {
                         ),
                   ),
                 ),
-                Icon(
+                const Icon(
                   Icons.chevron_right,
                   color: rcColor8,
                 ),
@@ -341,7 +382,7 @@ class DriverProfilePage extends StatelessWidget {
   void _handleLogout(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: const Text('Cerrar Sesión'),
         content: const Text('¿Estás seguro de que deseas cerrar sesión?'),
         actions: [
@@ -364,4 +405,3 @@ class DriverProfilePage extends StatelessWidget {
     );
   }
 }
-

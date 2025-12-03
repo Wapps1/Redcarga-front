@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:red_carga/core/session/session_store.dart';
 import 'package:red_carga/core/theme.dart';
@@ -23,7 +24,7 @@ class DriverMapPage extends StatelessWidget {
 
         final session = snapshot.data!;
         final wsService = TrackingWsService(
-          wsUrl: 'ws://localhost:8080/ws', // TODO mover a config
+          wsUrl: 'wss://redcargabk-b4b7cng3ftb2bfea.canadacentral-01.azurewebsites.net/_dev/ws-tester-tracking.html', // TODO: mover a config
           session: session,
         );
 
@@ -48,8 +49,48 @@ class _DriverMapView extends StatefulWidget {
 
 class _DriverMapViewState extends State<_DriverMapView> {
   GoogleMapController? _mapController;
+  LatLng _initialLatLng = const LatLng(-12.046374, -77.042793);
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('[DriverMap] initState');
+    _initCurrentPosition();
+  }
+
+  Future<void> _initCurrentPosition() async {
+    debugPrint('[DriverMap] Iniciando _initCurrentPosition');
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    debugPrint('[DriverMap] serviceEnabled: $serviceEnabled');
+    if (!serviceEnabled) {
+      debugPrint('[DriverMap] Servicios de ubicación apagados');
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    debugPrint('[DriverMap] permiso inicial: $permission');
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      debugPrint('[DriverMap] permiso tras request: $permission');
+    }
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      debugPrint('[DriverMap] permisos denegados, abortando _initCurrentPosition');
+      return;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition();
+      debugPrint('[DriverMap] posición obtenida: lat=${position.latitude}, lng=${position.longitude}');
+      _initialLatLng = LatLng(position.latitude, position.longitude);
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_initialLatLng, 15));
+      setState(() {});
+    } catch (e) {
+      debugPrint('[DriverMap] error obteniendo posición: $e');
+    }
+  }
 
   void _moveCamera(DriverLocation location) {
+    debugPrint('[DriverMap] moveCamera -> ${location.lat}, ${location.lng}');
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(
         LatLng(location.lat, location.lng),
@@ -59,6 +100,7 @@ class _DriverMapViewState extends State<_DriverMapView> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[DriverMap] build ejecutado con initialLatLng=$_initialLatLng');
     return Scaffold(
       backgroundColor: rcColor1,
       body: SafeArea(
@@ -103,16 +145,20 @@ class _DriverMapViewState extends State<_DriverMapView> {
                           }
                         : <Marker>{};
 
+                    debugPrint('[DriverMap] markers count: ${marker.length}');
                     return GoogleMap(
-                      initialCameraPosition: const CameraPosition(
-                        target: LatLng(-12.046374, -77.042793),
+                      initialCameraPosition: CameraPosition(
+                        target: _initialLatLng,
                         zoom: 13,
                       ),
-                      markers: marker,
-                      onMapCreated: (controller) => _mapController = controller,
                       myLocationEnabled: true,
                       myLocationButtonEnabled: true,
                       compassEnabled: true,
+                      markers: marker,
+                      onMapCreated: (controller) {
+                        debugPrint('[DriverMap] GoogleMap creado');
+                        _mapController = controller;
+                      },
                     );
                   },
                 ),
@@ -126,6 +172,7 @@ class _DriverMapViewState extends State<_DriverMapView> {
 
   @override
   void dispose() {
+    debugPrint('[DriverMap] dispose');
     _mapController?.dispose();
     super.dispose();
   }

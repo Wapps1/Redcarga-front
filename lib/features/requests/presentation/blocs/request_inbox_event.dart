@@ -11,3 +11,4 @@ class RequestInboxRefresh extends RequestInboxEvent {
   RequestInboxRefresh(this.companyId);
 }
 
+

@@ -25,7 +25,7 @@ class _CounterofferModalState extends State<CounterofferModal> {
   void initState() {
     super.initState();
     _precioActual = widget.precioActual;
-    _precioController.text = _precioActual.toStringAsFixed(0);
+    _precioController.text = _precioActual.toStringAsFixed(2);
   }
 
   @override
@@ -37,7 +37,7 @@ class _CounterofferModalState extends State<CounterofferModal> {
   void _incrementarPrecio() {
     setState(() {
       _precioActual += 100;
-      _precioController.text = _precioActual.toStringAsFixed(0);
+      _precioController.text = _precioActual.toStringAsFixed(2);
     });
   }
 
@@ -45,7 +45,7 @@ class _CounterofferModalState extends State<CounterofferModal> {
     if (_precioActual > 100) {
       setState(() {
         _precioActual -= 100;
-        _precioController.text = _precioActual.toStringAsFixed(0);
+        _precioController.text = _precioActual.toStringAsFixed(2);
       });
     }
   }
@@ -150,12 +150,11 @@ class _CounterofferModalState extends State<CounterofferModal> {
                             ),
                       ),
                       const SizedBox(width: 4),
-                      SizedBox(
-                        width: 80,
+                      Expanded(
                         child: TextField(
                           controller: _precioController,
                           onChanged: _onPrecioChanged,
-                          keyboardType: TextInputType.number,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                 color: colorScheme.primary,

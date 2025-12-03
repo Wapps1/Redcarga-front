@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class CancelDealChatCard extends StatelessWidget {
   final bool isMyCancellation; // true si el usuario actual canceló el trato
+  final DateTime? timestamp; // Timestamp del mensaje
 
   const CancelDealChatCard({
     super.key,
     this.isMyCancellation = false,
+    this.timestamp,
   });
 
   @override
@@ -80,9 +83,38 @@ class CancelDealChatCard extends StatelessWidget {
               ),
             ),
           ),
+          // Mostrar hora de envío
+          if (timestamp != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _formatMessageTime(timestamp!),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: rcWhite.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _formatMessageTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    
+    if (messageDate == today) {
+      // Si es hoy, mostrar solo la hora
+      return DateFormat('HH:mm').format(timestamp);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      // Si es ayer
+      return 'Ayer ${DateFormat('HH:mm').format(timestamp)}';
+    } else {
+      // Si es otro día, mostrar fecha y hora
+      return DateFormat('dd/MM HH:mm').format(timestamp);
+    }
   }
 }
 

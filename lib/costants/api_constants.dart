@@ -10,21 +10,28 @@ class ApiConstants {
   
   // Identity endpoints
   static String get verifyAndCreatePersonEndpoint => '$baseUrl/identity/verify-and-create';
+  static String identityByAccount(int accountId) => '$baseUrl/identity/$accountId';
   
   // Provider endpoints
   static String get registerCompanyEndpoint => '$baseUrl/providers/company/verify-and-register';
 
-  // -------------------------
   // Fleet - Drivers endpoints
-  // -------------------------
   static String driverById(int driverId) => '$baseUrl/fleet/drivers/$driverId';
   static String companyDrivers(int companyId) => '$baseUrl/fleet/companies/$companyId/drivers';
 
-  // --------------------------
   // Fleet - Vehicles endpoints
-  // --------------------------
   static String vehicleById(int vehicleId) => '$baseUrl/fleet/vehicles/$vehicleId';
   static String companyVehicles(int companyId) => '$baseUrl/fleet/companies/$companyId/vehicles';
+
+  // Media / Cloudinary
+  static String uploadImage({
+    required String subjectType,
+    required String subjectKey,
+  }) => '$baseUrl/media/uploads:image'
+        '?subjectType=$subjectType&subjectKey=$subjectKey';
+
+  // Provider - Company Operators endpoints
+  static String providerCompanyOperators(int companyId) => '$baseUrl/providers/company/$companyId/operators';
 
   // --------------------------
   // Requests endpoints
@@ -41,6 +48,16 @@ class ApiConstants {
   // Media endpoints
   // --------------------------
   static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
+  static String get uploadPdfEndpoint => '$baseUrl/media/uploads:pdf';
+  
+  // --------------------------
+  // Deals - Guides endpoints
+  // --------------------------
+  static String getGuides(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/guides';
+  static String createGuide(int quoteId, String type, String guideUrl) => '$baseUrl/api/deals/$quoteId/docs/guides?type=${Uri.encodeComponent(type)}&guideUrl=${Uri.encodeComponent(guideUrl)}';
+  static String updateGuideUrl(int quoteId, int guideId, String guideUrl) => '$baseUrl/api/deals/$quoteId/docs/guides/$guideId/url?guideUrl=${Uri.encodeComponent(guideUrl)}';
+  static String getTransportistaGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/transportista';
+  static String getRemitenteGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/remitente';
   static String get uploadPdfEndpoint => '$baseUrl/media/uploads:pdf';
   
   // --------------------------

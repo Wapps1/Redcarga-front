@@ -78,3 +78,4 @@ class RequestInboxItem {
   bool get isAccepted => status.toUpperCase() == 'ACCEPTED';
 }
 
+

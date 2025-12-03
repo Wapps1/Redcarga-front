@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/deals/presentation/widgets/cotizacion_card.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_view_cotizacion.dart';
+import 'package:red_carga/features/deals/presentation/pages/deals_chat.dart';
+import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
 import 'package:red_carga/features/deals/data/repositories/deals_repository.dart';
 import 'package:red_carga/features/deals/data/models/request_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
+import 'package:red_carga/features/deals/data/models/company_dto.dart';
+import 'package:red_carga/core/session/session_store.dart';
+import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
 import 'package:intl/intl.dart';
 
 class CotizacionPage extends StatefulWidget {
@@ -31,12 +36,35 @@ class _CotizacionPageState extends State<CotizacionPage>
   RequestDto? _selectedRequest;
   List<QuoteDto> _quotes = [];
   Map<int, QuoteDetailDto> _quoteDetails = {};
+  Map<int, CompanyDto> _companies = {}; // Cache de empresas
   bool _isLoadingRequests = false;
   bool _isLoadingQuotes = false;
   String? _errorMessage;
   
   // Estado del selector desplegable
   bool _isRequestDropdownOpen = false;
+  
+  // Helper para obtener el rol del usuario
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a customer si no se puede obtener
+    return UserRole.customer;
+  }
 
   @override
   void initState() {
@@ -112,12 +140,24 @@ class _CotizacionPageState extends State<CotizacionPage>
         state: state,
       );
       
-      // Cargar detalles de cada cotización
+      // Cargar detalles de cada cotización y datos de empresas
       final Map<int, QuoteDetailDto> details = {};
+      final Map<int, CompanyDto> companies = {};
+      
       for (final quote in quotes) {
         try {
           final detail = await _dealsRepository.getQuoteDetail(quote.quoteId);
           details[quote.quoteId] = detail;
+          
+          // Cargar datos de la empresa si no están en cache
+          if (!_companies.containsKey(quote.companyId)) {
+            try {
+              final company = await _dealsRepository.getCompany(quote.companyId);
+              companies[quote.companyId] = company;
+            } catch (e) {
+              print('⚠️ Error loading company ${quote.companyId}: $e');
+            }
+          }
         } catch (e) {
           print('⚠️ Error loading quote detail ${quote.quoteId}: $e');
         }
@@ -126,6 +166,7 @@ class _CotizacionPageState extends State<CotizacionPage>
       setState(() {
         _quotes = quotes;
         _quoteDetails = details;
+        _companies.addAll(companies); // Agregar nuevas empresas al cache
         _isLoadingQuotes = false;
       });
     } catch (e) {
@@ -372,28 +413,28 @@ class _CotizacionPageState extends State<CotizacionPage>
               });
             },
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
                 Expanded(
                   child: Text(
                     _selectedRequest?.requestName ?? 'Selecciona una solicitud',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: rcColor6,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: rcColor6,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                  ),
                 ),
-                Icon(
+              ),
+              Icon(
                   _isRequestDropdownOpen 
                       ? Icons.keyboard_arrow_up 
                       : Icons.keyboard_arrow_down,
-                  color: rcColor8,
-                ),
-              ],
-            ),
+                color: rcColor8,
+              ),
+            ],
+          ),
           ),
           if (_isRequestDropdownOpen && _requests.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -435,11 +476,11 @@ class _CotizacionPageState extends State<CotizacionPage>
             ),
           ],
           if (_selectedRequest != null) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
             _buildSolicitudRow('Día:', _formatDate(_selectedRequest!.createdAt)),
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
             _buildSolicitudRow('Origen:', _selectedRequest!.origin.fullAddress),
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
             _buildSolicitudRow('Destino:', _selectedRequest!.destination.fullAddress),
           ] else if (_isLoadingRequests) ...[
             const SizedBox(height: 12),
@@ -558,8 +599,11 @@ class _CotizacionPageState extends State<CotizacionPage>
     return ListView(
       padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
       children: _quotes.map((quote) {
+        final company = _companies[quote.companyId];
+        final empresaNombre = company?.tradeName ?? company?.legalName ?? 'Empresa ${quote.companyId}';
+        
         return CotizacionCard(
-          empresaNombre: 'Empresa ${quote.companyId}',
+          empresaNombre: empresaNombre,
           solicitudNombre: _selectedRequest?.requestName ?? '',
           calificacion: 3, // TODO: Obtener calificación real de la empresa
           precio: _formatPrice(quote.totalAmount, quote.currencyCode),
@@ -569,7 +613,7 @@ class _CotizacionPageState extends State<CotizacionPage>
             _navigateToDetalles(
               context,
               quote.quoteId,
-              'Empresa ${quote.companyId}',
+              empresaNombre,
               _selectedRequest?.requestName ?? '',
               _formatPrice(quote.totalAmount, quote.currencyCode),
             );
@@ -578,13 +622,33 @@ class _CotizacionPageState extends State<CotizacionPage>
             _navigateToDetalles(
               context,
               quote.quoteId,
-              'Empresa ${quote.companyId}',
+              empresaNombre,
               _selectedRequest?.requestName ?? '',
               _formatPrice(quote.totalAmount, quote.currencyCode),
             );
           } : null,
-          onChat: isOtherTabs ? () {
-            // TODO: Navegar a chat
+          onChat: isOtherTabs ? () async {
+            final detail = _quoteDetails[quote.quoteId];
+            final company = _companies[quote.companyId];
+            final empresaNombre = company?.tradeName ?? company?.legalName ?? 'Empresa ${quote.companyId}';
+            final requestName = _selectedRequest?.requestName ?? 'Solicitud';
+            final titulo = '$empresaNombre - $requestName';
+            
+            // Obtener el rol del usuario desde la sesión
+            final userRole = await _getUserRole();
+            
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => ChatPage(
+                    quoteId: quote.quoteId,
+                    nombre: titulo,
+                    userRole: userRole,
+                    acceptedDeal: detail?.stateCode == 'ACEPTADA',
+                  ),
+                ),
+              );
+            }
           } : null,
         );
       }).toList(),

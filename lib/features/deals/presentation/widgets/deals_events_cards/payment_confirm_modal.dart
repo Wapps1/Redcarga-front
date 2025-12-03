@@ -3,30 +3,13 @@ import 'package:red_carga/core/theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:ui';
 
-class EditDealModal extends StatefulWidget {
-  final bool acceptedDeal;
-  final Function(String motivo) onActualizarCotizacion;
-  final Function(String motivo) onEnviarSolicitud;
+class PaymentConfirmModal extends StatelessWidget {
+  final VoidCallback onConfirmarRecepcion;
 
-  const EditDealModal({
+  const PaymentConfirmModal({
     super.key,
-    required this.acceptedDeal,
-    required this.onActualizarCotizacion,
-    required this.onEnviarSolicitud,
+    required this.onConfirmarRecepcion,
   });
-
-  @override
-  State<EditDealModal> createState() => _EditDealModalState();
-}
-
-class _EditDealModalState extends State<EditDealModal> {
-  final TextEditingController _motivoController = TextEditingController();
-
-  @override
-  void dispose() {
-    _motivoController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +39,7 @@ class _EditDealModalState extends State<EditDealModal> {
               children: [
                 // Título
                 Text(
-                  'Editar trato',
+                  'Confirmar Recepción de Pago',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: rcColor6,
                         fontWeight: FontWeight.bold,
@@ -64,7 +47,7 @@ class _EditDealModalState extends State<EditDealModal> {
                 ),
                 const SizedBox(height: 24),
 
-                // Ícono de documento con lápiz
+                // Ícono de pago (SVG)
                 Container(
                   width: 80,
                   height: 80,
@@ -78,12 +61,12 @@ class _EditDealModalState extends State<EditDealModal> {
                   ),
                   child: Center(
                     child: SvgPicture.asset(
-                      'lib/features/deals/assets_temp/edicion_documento.svg',
+                      'lib/features/deals/assets_temp/pago_realizado.svg',
                       width: 50,
                       height: 50,
                       fit: BoxFit.contain,
                       placeholderBuilder: (context) => Icon(
-                        Icons.edit_document,
+                        Icons.payment,
                         size: 50,
                         color: colorScheme.primary,
                       ),
@@ -91,47 +74,18 @@ class _EditDealModalState extends State<EditDealModal> {
                   ),
                 ),
                 const SizedBox(height: 24),
-/*
-                // Campo de texto para el motivo
-                TextField(
-                  controller: _motivoController,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Cuéntanos tu motivo',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: rcColor8,
-                        ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: colorScheme.secondary.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: colorScheme.secondary.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.all(16),
-                  ),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+
+                // Mensaje de confirmación
+                Text(
+                  '¿Confirmas que has recibido el pago?',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: rcColor6,
                       ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-                */
 
-                // Botón según el estado
+                // Botón Confirmar recepción
                 SizedBox(
                   width: double.infinity,
                   child: Container(
@@ -150,26 +104,15 @@ class _EditDealModalState extends State<EditDealModal> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          // El input de motivo está comentado, usar string vacío
-                          final motivo = ''; // _motivoController.text.trim();
-                            // No cerrar aquí, dejar que el callback maneje el cierre
-                            if (widget.acceptedDeal) {
-                              widget.onEnviarSolicitud(motivo);
-                            } else {
-                            // Ejecutar el callback async en el siguiente frame para evitar bloqueos
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              widget.onActualizarCotizacion(motivo);
-                            });
-                          }
+                          Navigator.of(context).pop();
+                          onConfirmarRecepcion();
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Center(
                             child: Text(
-                              widget.acceptedDeal
-                                  ? 'Enviar solicitud de cotización'
-                                  : 'Actualizar cotización',
+                              'Confirmar recepción',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyLarge

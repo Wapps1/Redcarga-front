@@ -31,7 +31,7 @@ class _MainPageState extends State<MainPage> {
   late final List<Widget> _customerPages = <Widget>[
     HomePage(role: widget.role),
     const CotizacionPage(),
-    const ChatsPage(),
+    ChatsPage(userRole: widget.role),
     const CustomerProfilePage(),
   ];
 
@@ -39,7 +39,7 @@ class _MainPageState extends State<MainPage> {
     HomePage(role: widget.role),
     const RoutesPage(),
     RequestsPage(role: widget.role),
-    const ChatsPage(),
+    ChatsPage(userRole: widget.role),
     const ProviderProfilePage(),
   ];
 

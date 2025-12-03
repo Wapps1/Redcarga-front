@@ -46,6 +46,16 @@ class ApiConstants {
   // Media endpoints
   // --------------------------
   static String get uploadImageEndpoint => '$baseUrl/media/uploads:image';
+  static String get uploadPdfEndpoint => '$baseUrl/media/uploads:pdf';
+  
+  // --------------------------
+  // Deals - Guides endpoints
+  // --------------------------
+  static String getGuides(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/guides';
+  static String createGuide(int quoteId, String type, String guideUrl) => '$baseUrl/api/deals/$quoteId/docs/guides?type=${Uri.encodeComponent(type)}&guideUrl=${Uri.encodeComponent(guideUrl)}';
+  static String updateGuideUrl(int quoteId, int guideId, String guideUrl) => '$baseUrl/api/deals/$quoteId/docs/guides/$guideId/url?guideUrl=${Uri.encodeComponent(guideUrl)}';
+  static String getTransportistaGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/transportista';
+  static String getRemitenteGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/remitente';
   
   // --------------------------
   // Dimensions estimation endpoints

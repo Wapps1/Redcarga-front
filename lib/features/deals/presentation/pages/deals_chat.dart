@@ -1,5 +1,11 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_edit_cotizacion.dart';
@@ -8,6 +14,7 @@ import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/cancel_deal_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/cancel_deal_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/payment_made_modal.dart';
+import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/payment_confirm_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/payment_made_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/package_received_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/package_received_chat_card.dart';
@@ -18,16 +25,33 @@ import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_modal.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/shipment_sent_chat_card.dart';
 import 'package:red_carga/features/deals/presentation/widgets/deals_events_cards/edit_deal_chat_card.dart';
+import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
+import 'package:red_carga/features/deals/data/repositories/deals_repository.dart';
+import 'package:red_carga/features/deals/data/models/quote_change_request_dto.dart';
+import 'package:red_carga/features/deals/data/models/assignment_dto.dart';
+import 'package:red_carga/features/deals/data/models/checklist_item_dto.dart';
+import 'package:red_carga/features/deals/data/models/guide_dto.dart';
+import 'package:red_carga/features/deals/data/models/company_dto.dart';
+import 'package:red_carga/features/deals/data/models/driver_dto.dart';
+import 'package:red_carga/features/deals/data/models/vehicle_dto.dart';
+import 'package:red_carga/core/session/session_store.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
+import 'package:red_carga/features/auth/data/repositories/identity_remote_repository_impl.dart';
+import 'package:red_carga/features/auth/data/services/identity_service.dart';
+import 'package:red_carga/features/auth/data/models/user_identity_dto.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 class ChatPage extends StatefulWidget {
+  final int quoteId;
   final String nombre;
   final UserRole userRole;
   final bool acceptedDeal;
 
   const ChatPage({
     super.key,
+    required this.quoteId,
     required this.nombre,
     required this.userRole,
     this.acceptedDeal = false,
@@ -37,26 +61,34 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-// Modelo de mensaje del chat
+// Modelo unificado de mensaje del chat
 class ChatMessage {
   final String id;
-  final String text;
+  final String? text;
   final bool isMe;
   final DateTime timestamp;
   final String? imagePath;
   final String? filePath;
   final String? fileName;
   final MessageType type;
+  final bool isSystemEvent;
+  final String? systemSubtypeCode; // Para eventos del sistema
+  final String? info; // Para eventos del sistema
+  final bool isUnread; // Para marcar mensajes no leídos
 
   ChatMessage({
     required this.id,
-    required this.text,
+    this.text,
     required this.isMe,
     required this.timestamp,
     this.imagePath,
     this.filePath,
     this.fileName,
     required this.type,
+    this.isSystemEvent = false,
+    this.systemSubtypeCode,
+    this.info,
+    this.isUnread = false,
   });
 }
 
@@ -64,6 +96,7 @@ enum MessageType {
   text,
   image,
   file,
+  systemEvent,
 }
 
 // Estados para acciones del chat
@@ -85,16 +118,24 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
   
+  // Repositorio y datos del usuario
+  late DealsRepository _dealsRepository;
+  late IdentityRemoteRepositoryImpl _identityRepository;
+  int? _currentAccountId;
+  bool _isLoadingMessages = false;
+  
   // Cambiar este valor para forzar acceptedDeal a false (comentar/descomentar)
   // final bool _actualAcceptedDeal = false;
   late bool _actualAcceptedDeal;
   
   // Lista de mensajes del chat
   final List<ChatMessage> _messages = [];
+  int _lastReadMessageId = 0;
   
   // Estados de acciones del chat
   ChatAction _otherPersonAction = ChatAction.none; // Acción de la otra persona
   double _counterofferPrice = 0.0; // Precio de la contraoferta
+  double _currentQuotePrice = 0.0; // Precio actual de la cotización
   bool _isMyCounteroffer = false; // Si el usuario actual hizo la contraoferta
   bool _isMyCancellation = false; // Si el usuario actual canceló el trato
   bool _isMyPayment = false; // Si el usuario actual confirmó el pago
@@ -104,14 +145,37 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   String? _assignedDriver; // Conductor asignado (solo para proveedor)
   bool _isMyShipmentSent = false; // Si el usuario actual envió la carga
   bool _isMyEdit = false; // Si el usuario actual editó el documento
+  AssignmentDto? _currentAssignment; // Asignación actual de flota y conductor
+  List<ChecklistItemDto> _checklistItems = []; // Items del checklist
+  bool _isLoadingChecklist = false; // Estado de carga del checklist
+  bool _isChecklistExpanded = false; // Estado de expansión del checklist
+  List<GuideDto> _guides = []; // Guías de remisión
+  bool _isLoadingGuides = false; // Estado de carga de guías
 
   @override
   void initState() {
     super.initState();
-    _actualAcceptedDeal = !widget.acceptedDeal;
+    _dealsRepository = DealsRepositories.createDealsRepository();
+    
+    // Inicializar repositorio de identidad
+    final identityService = IdentityService();
+    final sessionStore = SessionStore();
+    _identityRepository = IdentityRemoteRepositoryImpl(
+      identityService: identityService,
+      getFirebaseIdToken: () async {
+        final session = await sessionStore.getAppSession();
+        if (session == null) {
+          throw Exception('No hay sesión activa');
+        }
+        return session.accessToken;
+      },
+    );
+    
+    // Inicializar con false, se actualizará al cargar el detalle de la cotización
+    _actualAcceptedDeal = false;
     
     _tabController = TabController(
-      length: _actualAcceptedDeal ? 2 : 1,
+      length: 1, // Inicialmente solo el tab de Chat
       vsync: this,
     );
     _tabController.addListener(() {
@@ -133,45 +197,274 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       }
     });
     
-    // Agregar algunos mensajes de ejemplo
-    _messages.addAll([
-      ChatMessage(
-        id: '1',
-        text: 'Hola, estoy interesado en tu cotización',
-        isMe: false,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '2',
-        text: 'Perfecto, podemos coordinar la entrega',
-        isMe: true,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '3',
-        text: '¿Cuándo podríamos iniciar?',
-        isMe: false,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 30)),
-        type: MessageType.text,
-      ),
-      ChatMessage(
-        id: '4',
-        text: 'Podríamos iniciar la próxima semana',
-        isMe: true,
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
-        type: MessageType.text,
-      ),
-    ]);
+    // Cargar el estado de la cotización y los mensajes del chat
+    _loadQuoteState();
+    _loadChatMessages();
+    _loadAssignment();
+    _loadChecklist();
+    _loadGuides();
+  }
+  
+  Future<void> _loadChecklist() async {
+    try {
+      setState(() {
+        _isLoadingChecklist = true;
+      });
+      
+      final items = await _dealsRepository.getChecklistItems(widget.quoteId);
+      
+      if (mounted) {
+        setState(() {
+          _checklistItems = items;
+          _isLoadingChecklist = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading checklist: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingChecklist = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadGuides() async {
+    try {
+      setState(() {
+        _isLoadingGuides = true;
+      });
+      
+      final guides = await _dealsRepository.getGuides(widget.quoteId);
+      print('📋 [ChatPage] Guías cargadas: ${guides.length}');
+      for (var guide in guides) {
+        print('📋 [ChatPage] - ${guide.type}: guideId=${guide.guideId}, guideUrl="${guide.guideUrl}"');
+      }
+      
+      if (mounted) {
+        setState(() {
+          _guides = guides;
+          _isLoadingGuides = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading guides: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingGuides = false;
+        });
+      }
+    }
+  }
+  
+  Future<void> _loadAssignment() async {
+    try {
+      final assignment = await _dealsRepository.getAssignment(widget.quoteId);
+      if (mounted) {
+        setState(() {
+          _currentAssignment = assignment;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading assignment: $e');
+      // No mostrar error al usuario, simplemente no hay asignación
+    }
+  }
+
+  Future<void> _loadQuoteState() async {
+    try {
+      // Cargar detalle de la cotización para obtener el stateCode
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+      
+      // Determinar si el trato está aceptado basándose en el stateCode
+      final isAccepted = quoteDetail.stateCode == 'ACEPTADA';
+      
+      if (mounted) {
+        setState(() {
+          _actualAcceptedDeal = isAccepted;
+          _currentQuotePrice = quoteDetail.totalAmount;
+          
+          // Actualizar el TabController si es necesario
+          if (isAccepted && _tabController.length == 1) {
+            _tabController.dispose();
+            _tabController = TabController(length: 2, vsync: this);
+            _tabController.addListener(() {
+              setState(() {});
+            });
+          } else if (!isAccepted && _tabController.length == 2) {
+            _tabController.dispose();
+            _tabController = TabController(length: 1, vsync: this);
+            _tabController.addListener(() {
+              setState(() {});
+            });
+          }
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading quote state: $e');
+      // En caso de error, mantener el valor por defecto
+    }
+  }
+
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a customer si no se puede obtener
+    return UserRole.customer;
+  }
+
+  Future<void> _loadChatMessages() async {
+    setState(() {
+      _isLoadingMessages = true;
+    });
+    
+    try {
+      // Obtener accountId del usuario actual
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null) {
+        _currentAccountId = session.accountId;
+      }
+      
+      // Cargar mensajes del chat
+      final chatDto = await _dealsRepository.getChat(widget.quoteId);
+      _lastReadMessageId = chatDto.lastReadMessageId;
+      
+      // Mapear mensajes del API a mensajes locales (procesar en batches para no bloquear)
+      final List<ChatMessage> messages = [];
+      final messagesCount = chatDto.messages.length;
+      
+      // Procesar en batches de 50 para no bloquear el hilo principal
+      const batchSize = 50;
+      for (int i = 0; i < messagesCount; i += batchSize) {
+        final end = (i + batchSize < messagesCount) ? i + batchSize : messagesCount;
+        
+        // Procesar batch sin crear sublista innecesaria
+        for (int j = i; j < end; j++) {
+          final msgDto = chatDto.messages[j];
+          final isMe = _currentAccountId != null && msgDto.createdBy == _currentAccountId;
+          final isUnread = msgDto.messageId > _lastReadMessageId;
+          
+          // Parsear fecha de forma segura (cachear si es posible)
+          DateTime timestamp;
+          try {
+            timestamp = DateTime.parse(msgDto.createdAt);
+          } catch (e) {
+            timestamp = DateTime.now(); // Fallback si hay error de parsing
+          }
+          
+          if (msgDto.typeCode == 'SYSTEM') {
+            // Es un evento del sistema
+            messages.add(ChatMessage(
+              id: msgDto.messageId.toString(),
+              text: msgDto.body,
+              isMe: isMe,
+              timestamp: timestamp,
+              type: MessageType.systemEvent,
+              isSystemEvent: true,
+              systemSubtypeCode: msgDto.systemSubtypeCode,
+              info: msgDto.info,
+              isUnread: isUnread,
+            ));
+          } else {
+            // Es un mensaje de usuario
+            MessageType messageType = MessageType.text;
+            String? fileName;
+            String? imagePath;
+            String? filePath;
+            
+            if (msgDto.contentCode == 'IMAGE') {
+              messageType = MessageType.image;
+              imagePath = msgDto.mediaUrl;
+            } else if (msgDto.mediaUrl != null) {
+              messageType = MessageType.file;
+              filePath = msgDto.mediaUrl;
+              // Optimizar: solo hacer split si realmente necesitamos el fileName
+              final lastSlash = msgDto.mediaUrl!.lastIndexOf('/');
+              fileName = lastSlash >= 0 && lastSlash < msgDto.mediaUrl!.length - 1
+                  ? msgDto.mediaUrl!.substring(lastSlash + 1)
+                  : null;
+            }
+            
+            messages.add(ChatMessage(
+              id: msgDto.messageId.toString(),
+              text: msgDto.body,
+              isMe: isMe,
+              timestamp: timestamp,
+              type: messageType,
+              imagePath: imagePath,
+              filePath: filePath,
+              fileName: fileName,
+              isUnread: isUnread,
+            ));
+          }
+        }
+        
+        // Permitir que el hilo principal procese otros eventos entre batches
+        if (i + batchSize < messagesCount) {
+          await Future.delayed(const Duration(milliseconds: 1));
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          _messages.addAll(messages);
+          _isLoadingMessages = false;
+        });
+      }
+      
+      _scrollToBottom();
+    } catch (e) {
+      print('❌ Error loading chat messages: $e');
+      setState(() {
+        _isLoadingMessages = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    // Marcar mensajes como leídos antes de salir
+    _markMessagesAsRead();
+    
     _tabController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    if (_messages.isEmpty) return;
+    
+    try {
+      // Obtener el ID del último mensaje
+      final lastMessageId = _messages
+          .map((msg) => int.tryParse(msg.id) ?? 0)
+          .reduce((a, b) => a > b ? a : b);
+      
+      if (lastMessageId > 0) {
+        await _dealsRepository.markMessagesAsRead(widget.quoteId, lastMessageId);
+        print('✅ Mensajes marcados como leídos: lastSeenMessageId=$lastMessageId');
+      }
+    } catch (e) {
+      print('❌ Error marking messages as read: $e');
+      // No mostrar error al usuario ya que está saliendo del chat
+    }
   }
 
   @override
@@ -328,20 +621,57 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Área de chat
           Expanded(
-            child: ListView.builder(
+            child: _isLoadingMessages
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
               itemBuilder: (context, index) {
-                // Mostrar cards de acciones especiales si existen
+                      // Mostrar cards de acciones especiales si existen (solo si no hay mensaje del sistema correspondiente)
                 if (index == _messages.length && _otherPersonAction != ChatAction.none) {
+                        // Verificar si ya existe un mensaje del sistema para esta acción
+                        bool hasSystemMessage = false;
+                        if (_otherPersonAction == ChatAction.counteroffer) {
+                          hasSystemMessage = _messages.any((msg) => 
+                            msg.isSystemEvent && 
+                            msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                            msg.isMe == _isMyCounteroffer
+                          );
+                        }
+                        
+                        // Solo mostrar el card temporal si no hay mensaje del sistema
+                        if (!hasSystemMessage) {
                   return _buildActionCard(colorScheme);
+                        } else {
+                          // Si ya hay mensaje del sistema, limpiar la acción temporal
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() {
+                                _otherPersonAction = ChatAction.none;
+                              });
+                            }
+                          });
+                          return const SizedBox.shrink();
+                        }
                 }
                 
                 final message = _messages[index];
-                return Padding(
+                      
+                      // Mostrar separador de mensajes no leídos
+                      final shouldShowUnreadSeparator = index > 0 && 
+                          message.isUnread && 
+                          !_messages[index - 1].isUnread;
+                      
+                      return Column(
+                        children: [
+                          if (shouldShowUnreadSeparator)
+                            _buildUnreadSeparator(colorScheme),
+                          Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildMessageWidget(message, colorScheme),
+                          ),
+                        ],
                 );
               },
             ),
@@ -409,17 +739,318 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Widget _buildMessageWidget(ChatMessage message, ColorScheme colorScheme) {
+    // Si es un evento del sistema, mostrar la card correspondiente
+    if (message.isSystemEvent && message.systemSubtypeCode != null) {
+      return _buildSystemEventCard(message, colorScheme);
+    }
+    
+    // Si es un mensaje de usuario normal
     switch (message.type) {
       case MessageType.text:
-        return _buildMessageBubble(message.text, message.isMe, colorScheme);
+        return _buildMessageBubble(message.text ?? '', message.isMe, colorScheme, timestamp: message.timestamp);
       case MessageType.image:
         return _buildImageMessage(message, colorScheme);
       case MessageType.file:
         return _buildFileMessage(message, colorScheme);
+      default:
+        return const SizedBox.shrink();
     }
   }
 
-  Widget _buildMessageBubble(String message, bool isMe, ColorScheme colorScheme) {
+  Widget _buildUnreadSeparator(ColorScheme colorScheme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 1,
+              color: colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Mensajes no leídos',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemEventCard(ChatMessage message, ColorScheme colorScheme) {
+    final isMe = message.isMe;
+    final subtypeCode = message.systemSubtypeCode!;
+    
+    switch (subtypeCode) {
+      case 'CHANGE_PROPOSED':
+        // Si acceptedDeal es true, mostrar card de editar documento
+        // Si acceptedDeal es false, mostrar card de contraoferta
+        final changeData = _extractChangeFromInfo(message.info);
+        final isCreatedByMe = changeData?['createdBy'] != null && 
+                              _currentAccountId != null && 
+                              changeData!['createdBy'] == _currentAccountId;
+        
+        if (_actualAcceptedDeal) {
+          // Si el cambio está pendiente y no lo creó el usuario actual, mostrar botón para ver cotización
+          return EditDealChatCard(
+            acceptedDeal: _actualAcceptedDeal,
+            isMyEdit: isCreatedByMe,
+            statusCode: changeData?['statusCode'] as String?,
+            timestamp: message.timestamp,
+            onVerCotizacion: changeData?['statusCode'] == 'PENDIENTE' &&
+                    changeData?['changeId'] != null &&
+                    !isCreatedByMe
+                ? () => _verCotizacionConCambios(
+                      widget.quoteId,
+                      changeData!['changeId'] as int,
+                    )
+                : null,
+          );
+        } else {
+          // Contraoferta propuesta
+          final price = _extractPriceFromInfo(message.info);
+          return CounterofferChatCard(
+            precio: price ?? 0.0,
+            isMyCounteroffer: isMe,
+            statusCode: changeData?['statusCode'] as String?,
+            timestamp: message.timestamp,
+            onVerCotizacion: changeData?['statusCode'] == 'PENDIENTE' &&
+                    changeData?['changeId'] != null &&
+                    !isCreatedByMe
+                ? () => _verCotizacionConCambios(
+                      widget.quoteId,
+                      changeData!['changeId'] as int,
+                    )
+                : null,
+            onAceptar: () {
+              // TODO: Aceptar contraoferta
+            },
+            onRechazar: () {
+              // TODO: Rechazar contraoferta
+            },
+          );
+        }
+      case 'CHANGE_ACCEPTED':
+        // Cambio aceptado - mostrar card según si es acceptedDeal o no
+        final changeDataAccepted = _extractChangeFromInfo(message.info);
+        final isCreatedByMeAccepted = changeDataAccepted?['createdBy'] != null && 
+                                      _currentAccountId != null && 
+                                      changeDataAccepted!['createdBy'] == _currentAccountId;
+        
+        if (_actualAcceptedDeal) {
+          return EditDealChatCard(
+            acceptedDeal: _actualAcceptedDeal,
+            isMyEdit: isCreatedByMeAccepted,
+            statusCode: changeDataAccepted?['statusCode'] as String?,
+            timestamp: message.timestamp,
+          );
+        } else {
+          // Cambio aceptado (contraoferta)
+          final changeData = _extractChangeFromInfo(message.info);
+          final price = _extractPriceFromInfo(message.info);
+          return CounterofferChatCard(
+            precio: price ?? 0.0,
+            isMyCounteroffer: isMe,
+            statusCode: changeData?['statusCode'] as String?,
+            timestamp: message.timestamp,
+          );
+        }
+      case 'ACCEPTANCE_CONFIRMED':
+      case 'ACCEPTANCE_REQUEST':
+        // Trato aceptado
+        final acceptanceData = _extractAcceptanceFromInfo(message.info);
+        return AcceptDealChatCard(
+          isMyAcceptance: isMe,
+          fleet: _extractFleetFromInfo(message.info),
+          driver: _extractDriverFromInfo(message.info),
+          status: acceptanceData?['status'] as String?,
+          acceptanceId: acceptanceData?['acceptanceId'] as int?,
+          initiatorUserId: acceptanceData?['initiatorUserId'] as int?,
+          currentUserId: _currentAccountId,
+          timestamp: message.timestamp,
+          onAceptar: acceptanceData?['status'] == 'PENDIENTE' &&
+                  acceptanceData?['acceptanceId'] != null &&
+                  acceptanceData?['initiatorUserId'] != null &&
+                  _currentAccountId != null &&
+                  acceptanceData?['initiatorUserId'] != _currentAccountId
+              ? () => _confirmarAceptacion(acceptanceData!['acceptanceId'] as int)
+              : null,
+          onRechazar: acceptanceData?['status'] == 'PENDIENTE' &&
+                  acceptanceData?['acceptanceId'] != null &&
+                  acceptanceData?['initiatorUserId'] != null &&
+                  _currentAccountId != null &&
+                  acceptanceData?['initiatorUserId'] != _currentAccountId
+              ? () => _rechazarAceptacion(acceptanceData!['acceptanceId'] as int)
+              : null,
+        );
+      case 'CHANGE_APPLIED':
+        // Edición aplicada
+        return EditDealChatCard(
+          acceptedDeal: _actualAcceptedDeal,
+          isMyEdit: isMe,
+          timestamp: message.timestamp,
+        );
+      case 'QUOTE_REJECTED':
+        // Trato cancelado
+        return CancelDealChatCard(
+          isMyCancellation: isMe,
+          timestamp: message.timestamp,
+        );
+      case 'PAYMENT_MADE':
+        // Pago realizado - mostrar botón para confirmar recepción si no es mi pago
+        return PaymentMadeChatCard(
+          isMyPayment: isMe,
+          systemSubtypeCode: subtypeCode,
+          timestamp: message.timestamp,
+          onConfirmarRecepcion: !isMe
+              ? () => _mostrarModalConfirmarRecepcionPago()
+              : null,
+        );
+      case 'PAYMENT_CONFIRMED':
+        // Pago confirmado por ambas partes
+        return PaymentMadeChatCard(
+          isMyPayment: isMe,
+          systemSubtypeCode: subtypeCode,
+          timestamp: message.timestamp,
+        );
+      case 'SHIPMENT_RECEIVED':
+        // Paquete recibido - mostrar card de envío recibido
+        return ShipmentSentChatCard(
+          isMyShipment: isMe,
+          systemSubtypeCode: subtypeCode,
+          timestamp: message.timestamp,
+        );
+      case 'SHIPMENT_SENT':
+        // Carga enviada - mostrar botón para confirmar recepción si no es mi envío
+        return ShipmentSentChatCard(
+          isMyShipment: isMe,
+          systemSubtypeCode: subtypeCode,
+          timestamp: message.timestamp,
+          onConfirmarRecepcion: !isMe
+              ? () => _mostrarModalConfirmarRecepcionEnvio()
+              : null,
+        );
+      case 'DOC_GRE_REMITENTE':
+      case 'DOC_GRE_TRANSPORTISTA':
+      case 'INFO':
+      case 'STATE_TRANSITION':
+      case 'CHANGE_REJECTED':
+      case 'ACCEPTANCE_REJECTED':
+      default:
+        // Mostrar como mensaje de texto genérico
+        return _buildMessageBubble(
+          message.info ?? message.text ?? 'Evento del sistema',
+          false,
+          colorScheme,
+          timestamp: message.timestamp,
+        );
+    }
+  }
+
+  double? _extractPriceFromInfo(String? info) {
+    if (info == null) return null;
+    try {
+      // Intentar extraer el precio del info (puede estar en formato JSON o texto)
+      final regex = RegExp(r'(\d+\.?\d*)');
+      final match = regex.firstMatch(info);
+      if (match != null) {
+        return double.parse(match.group(1)!);
+      }
+    } catch (e) {
+      print('Error extracting price from info: $e');
+    }
+    return null;
+  }
+
+  String? _extractFleetFromInfo(String? info) {
+    if (info == null) return null;
+    // Intentar extraer la flota del info
+    final regex = RegExp(r'[Ff]lota[:\s]+([^,\n]+)');
+    final match = regex.firstMatch(info);
+    return match?.group(1)?.trim();
+  }
+
+  String? _extractDriverFromInfo(String? info) {
+    if (info == null) return null;
+    // Intentar extraer el conductor del info
+    final regex = RegExp(r'[Cc]onductor[:\s]+([^,\n]+)');
+    final match = regex.firstMatch(info);
+    return match?.group(1)?.trim();
+  }
+
+  /// Extrae los datos del cambio del campo info
+  Map<String, dynamic>? _extractChangeFromInfo(String? info) {
+    if (info == null) return null;
+    try {
+      Map<String, dynamic> infoMap;
+      
+      // El info siempre viene como String (JSON string) desde el DTO
+      try {
+        infoMap = jsonDecode(info) as Map<String, dynamic>;
+      } catch (e) {
+        // Si no es JSON válido, retornar null
+        return null;
+      }
+      
+      // Extraer datos del cambio
+      final change = infoMap['change'] as Map<String, dynamic>?;
+      if (change == null) return null;
+      
+      return {
+        'changeId': change['changeId'] as int?,
+        'statusCode': change['statusCode'] as String?,
+        'createdBy': change['createdBy'] as int?,
+        'kindCode': change['kindCode'] as String?,
+      };
+    } catch (e) {
+      print('Error extracting change from info: $e');
+      return null;
+    }
+  }
+
+  /// Extrae los datos de aceptación del campo info
+  Map<String, dynamic>? _extractAcceptanceFromInfo(String? info) {
+    if (info == null) return null;
+    try {
+      Map<String, dynamic> infoMap;
+      
+      // El info siempre viene como String (JSON string) desde el DTO
+      try {
+        infoMap = jsonDecode(info) as Map<String, dynamic>;
+      } catch (e) {
+        // Si no es JSON válido, retornar null
+        return null;
+      }
+      
+      // Extraer datos de aceptación
+      final acceptance = infoMap['acceptance'] as Map<String, dynamic>?;
+      if (acceptance == null) return null;
+      
+      return {
+        'acceptanceId': acceptance['acceptanceId'] as int?,
+        'status': acceptance['status'] as String?,
+        'initiatorUserId': acceptance['initiatorUserId'] as int?,
+        'resolverUserId': acceptance['resolverUserId'] as int?,
+      };
+    } catch (e) {
+      print('Error extracting acceptance from info: $e');
+      return null;
+    }
+  }
+
+  Widget _buildMessageBubble(String message, bool isMe, ColorScheme colorScheme, {DateTime? timestamp}) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -436,14 +1067,47 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             bottomRight: Radius.circular(isMe ? 4 : 20),
           ),
         ),
-        child: Text(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
           message,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: isMe ? rcWhite : rcColor6,
               ),
+            ),
+            if (timestamp != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _formatMessageTime(timestamp),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isMe ? rcWhite.withOpacity(0.7) : rcColor8,
+                      fontSize: 11,
+                    ),
+              ),
+            ],
+          ],
         ),
       ),
     );
+  }
+  
+  String _formatMessageTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    
+    if (messageDate == today) {
+      // Si es hoy, mostrar solo la hora
+      return DateFormat('HH:mm').format(timestamp);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      // Si es ayer
+      return 'Ayer ${DateFormat('HH:mm').format(timestamp)}';
+    } else {
+      // Si es otro día, mostrar fecha y hora
+      return DateFormat('dd/MM HH:mm').format(timestamp);
+    }
   }
 
   Widget _buildImageMessage(ChatMessage message, ColorScheme colorScheme) {
@@ -477,14 +1141,30 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     );
                   },
                 ),
-              if (message.text.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (message.text != null && message.text!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    message.text,
+                          message.text!,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: message.isMe ? rcWhite : rcColor6,
                         ),
+                        ),
+                      ),
+                    Text(
+                      _formatMessageTime(message.timestamp),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: message.isMe ? rcWhite.withOpacity(0.7) : rcColor8,
+                            fontSize: 11,
+                          ),
+                    ),
+                  ],
                   ),
                 ),
             ],
@@ -518,6 +1198,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     message.fileName ?? 'Archivo',
@@ -527,13 +1208,24 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (message.text.isNotEmpty)
-                    Text(
-                      message.text,
+                  if (message.text != null && message.text!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        message.text!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: message.isMe ? rcWhite.withOpacity(0.8) : rcColor8,
                           ),
                       overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatMessageTime(message.timestamp),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: message.isMe ? rcWhite.withOpacity(0.7) : rcColor8,
+                          fontSize: 11,
+                        ),
                     ),
                 ],
               ),
@@ -625,6 +1317,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   List<Widget> _buildActionButtons(bool isCustomer, ColorScheme colorScheme) {
     if (isCustomer) {
+      // Acciones para CUSTOMER
       return [
         _buildActionButton(
           'Ver Cotización actual',
@@ -634,31 +1327,32 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
-                  acceptedDeal: widget.acceptedDeal,
+                  quoteId: widget.quoteId,
+                  acceptedDeal: _actualAcceptedDeal,
                   editingMode: false,
-                  isCustomer: isCustomer,
+                  isCustomer: true,
                 ),
               ),
             );
           },
         ),
         _buildActionButton(
-          'Editar carga actual',
+          'Editar cotización',
           colorScheme.secondary,
           colorScheme,
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
-                  acceptedDeal: widget.acceptedDeal,
+                  quoteId: widget.quoteId,
+                  acceptedDeal: _actualAcceptedDeal,
                   editingMode: true,
-                  isCustomer: isCustomer,
+                  isCustomer: true,
                   onEdicionCompletada: (motivo) {
                     setState(() {
                       _otherPersonAction = ChatAction.quoteEdit;
                       _isMyEdit = true;
                     });
-                    // TODO: Enviar edición al servidor
                   },
                 ),
               ),
@@ -670,28 +1364,27 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
         if (!_actualAcceptedDeal)
           _buildActionButton(
-            'Aceptar acuerdo',
+            'Aceptar trato',
             colorScheme.secondary,
             colorScheme,
             onTap: () {
               _mostrarModalAceptarTrato();
             },
           ),
-        if (_actualAcceptedDeal) ...[
+        if (_actualAcceptedDeal)
           _buildActionButton(
-            'Paquete recibido',
+            'Pago enviado',
             colorScheme.secondary,
             colorScheme,
             onTap: () {
-              _mostrarModalPaqueteRecibido();
+              _mostrarModalPagoRealizado();
             },
           ),
-        ],
         _buildActionButton(
           'Cancelar trato',
           rcColor1,
@@ -703,6 +1396,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         ),
       ];
     } else {
+      // Acciones para PROVIDER
       return [
         _buildActionButton(
           'Ver Cotización actual',
@@ -712,31 +1406,32 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
                   acceptedDeal: _actualAcceptedDeal,
                   editingMode: false,
-                  isCustomer: isCustomer,
+                  isCustomer: false,
                 ),
               ),
             );
           },
         ),
         _buildActionButton(
-          'Editar carga actual',
+          'Editar cotización',
           colorScheme.secondary,
           colorScheme,
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => EditCotizacionPage(
+                  quoteId: widget.quoteId,
                   acceptedDeal: _actualAcceptedDeal,
                   editingMode: true,
-                  isCustomer: isCustomer,
+                  isCustomer: false,
                   onEdicionCompletada: (motivo) {
                     setState(() {
                       _otherPersonAction = ChatAction.quoteEdit;
                       _isMyEdit = true;
                     });
-                    // TODO: Enviar edición al servidor
                   },
                 ),
               ),
@@ -748,12 +1443,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           colorScheme.primary,
           colorScheme,
           onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
+            _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
           },
         ),
         if (!_actualAcceptedDeal)
           _buildActionButton(
-            'Aceptar acuerdo',
+            'Aceptar trato',
             colorScheme.secondary,
             colorScheme,
             onTap: () {
@@ -762,11 +1457,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           ),
         if (_actualAcceptedDeal) ...[
           _buildActionButton(
-            'Pago realizado',
+            'Asignación de flota',
             colorScheme.secondary,
             colorScheme,
             onTap: () {
-              _mostrarModalPagoRealizado();
+              _mostrarModalAsignarFlotaConductor();
             },
           ),
           _buildActionButton(
@@ -975,135 +1670,394 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (isCustomer) ...[
-              // Vista para customer
-              _buildInfoSection(
-                'Acciones',
-                [
-                  _buildActionButton(
-                    'Ver Cotización actual',
-                    colorScheme.primary,
-                    colorScheme,
+            // Checklist
+            if (_checklistItems.isNotEmpty || _isLoadingChecklist) ...[
+              Text(
+                'Checklist',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: rcColor6,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              if (_isLoadingChecklist)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: rcColor8.withOpacity(0.2),
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: rcColor8.withOpacity(0.2),
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header clicable
+                      GestureDetector(
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: false,
-                            isCustomer: isCustomer,
+                          setState(() {
+                            _isChecklistExpanded = !_isChecklistExpanded;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Tareas pendientes',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: rcColor6,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const Spacer(),
+                              // Contador de completados
+                              Text(
+                                '${_checklistItems.where((item) => item.isCompleted).length}/${_checklistItems.length}',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: rcColor8,
+                                      fontSize: 12,
+                                    ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                _isChecklistExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                color: rcColor8,
+                                size: 20,
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-                  _buildActionButton(
-                    'Editar carga actual',
-                    colorScheme.secondary,
-                    colorScheme,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: true,
-                            isCustomer: isCustomer,
+                      ),
+                      // Contenido expandible
+                      if (_isChecklistExpanded) ...[
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: rcColor8.withOpacity(0.2),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: _checklistItems
+                                .map((item) => _buildChecklistItem(item, colorScheme))
+                                .toList(),
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ],
                   ),
-                  _buildActionButton(
-          'Hacer contraoferta',
-          colorScheme.primary,
-          colorScheme,
-          onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
-          },
-        ),
-                  _buildActionButton(
-                    'Paquete recibido',
-                    colorScheme.secondary,
-                    colorScheme,
-                    onTap: () {
-                      _mostrarModalPaqueteRecibido();
-                    },
-                  ),
-                ],
               ),
               const SizedBox(height: 24),
-              _buildInfoSection(
-                'Documentos',
-                [
-                  _buildDocumentButton('Guía de remisión', colorScheme),
-                  _buildDocumentButton('Guía de transportista', colorScheme),
-                ],
-              ),
-            ] else ...[
-              // Vista para provider
-              _buildInfoSection(
-                'Acciones de ruta',
-                [
-                  _buildDropdownField('Seleccionar Flota', 'Flota 1', colorScheme),
-                  const SizedBox(height: 16),
-                  _buildDropdownField('Seleccionar Conductor', 'Juan Pérez', colorScheme),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildInfoSection(
-                'Acciones',
-                [
-                  _buildActionButton(
-                    'Ver Cotización actual',
-                    colorScheme.primary,
-                    colorScheme,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: false,
-                            isCustomer: isCustomer,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildActionButton(
-                    'Editar carga actual',
-                    colorScheme.secondary,
-                    colorScheme,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EditCotizacionPage(
-                            acceptedDeal: _actualAcceptedDeal,
-                            editingMode: true,
-                            isCustomer: isCustomer,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildActionButton(
-          'Hacer contraoferta',
-          colorScheme.primary,
-          colorScheme,
-          onTap: () {
-            _mostrarModalContraoferta(1000.0); // Precio actual por defecto
-          },
-        ),
-                  _buildActionButton('Pago realizado', colorScheme.secondary, colorScheme),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildInfoSection(
-                'Documentos',
-                [
-                  _buildDocumentButton('Guía de remisión', colorScheme),
-                  _buildDocumentButton('Guía de transportista', colorScheme),
-                ],
-              ),
             ],
+            // Asignación de flota (solo para provider)
+            if (!isCustomer && _actualAcceptedDeal) ...[
+              _buildInfoSection(
+                'Asignación de flota',
+                [
+                  if (_currentAssignment != null) ...[
+                    // Mostrar información de la asignación actual
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: rcColor7,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: colorScheme.primary.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Asignación actual:',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: rcColor6,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          FutureBuilder<Map<String, String?>>(
+                            future: _getAssignmentDetails(),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState == ConnectionState.waiting) {
+                                return const CircularProgressIndicator();
+                              }
+                              final details = snapshot.data ?? {};
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (details['vehicle'] != null)
+                                    Text(
+                                      'Flota: ${details['vehicle']}',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: rcColor6,
+                                          ),
+                                    ),
+                                  if (details['driver'] != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Conductor: ${details['driver']}',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: rcColor6,
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                      );
+                    },
+                  ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  _buildActionButton(
+                    _currentAssignment != null
+                        ? 'Modificar asignación'
+                        : 'Asignar flota y conductor',
+          colorScheme.primary,
+          colorScheme,
+          onTap: () {
+                      _mostrarModalAsignarFlotaConductor();
+          },
+        ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+            // Documentos
+              _buildInfoSection(
+                'Documentos',
+                [
+                  _buildActionButton(
+                    'Generar guías de remisión',
+                    colorScheme.primary,
+                    colorScheme,
+                    onTap: () => _generarYSubirGuias(),
+                  ),
+                  // Customer: solo ver guía de remisión
+                  if (isCustomer && _guides.any((g) => g.type == 'REMISION'))
+                    _buildActionButton(
+                      'Ver guía de remisión',
+                      colorScheme.secondary,
+                      colorScheme,
+                      onTap: () => _verGuiaRemitente(),
+                    ),
+                  // Provider: solo ver guía de transportista
+                  if (!isCustomer && _guides.any((g) => g.type == 'TRANSPORTISTA'))
+                    _buildActionButton(
+                      'Ver guía de transportista',
+                      colorScheme.secondary,
+                      colorScheme,
+                      onTap: () => _verGuiaTransportista(),
+                    ),
+                ],
+              ),
+            // Acciones comentadas por ahora
+            // if (isCustomer) ...[
+            //   // Vista para customer
+            //   _buildInfoSection(
+            //     'Acciones',
+            //     [
+            //       _buildActionButton(
+            //         'Ver Cotización actual',
+            //         colorScheme.primary,
+            //         colorScheme,
+            //         onTap: () {
+            //           Navigator.of(context).push(
+            //             MaterialPageRoute(
+            //               builder: (context) => EditCotizacionPage(
+            //                 acceptedDeal: _actualAcceptedDeal,
+            //                 editingMode: false,
+            //                 isCustomer: isCustomer,
+            //               ),
+            //             ),
+            //           );
+            //         },
+            //       ),
+            //       _buildActionButton(
+            //         'Editar carga actual',
+            //         colorScheme.secondary,
+            //         colorScheme,
+            //         onTap: () {
+            //           Navigator.of(context).push(
+            //             MaterialPageRoute(
+            //               builder: (context) => EditCotizacionPage(
+            //                 quoteId: widget.quoteId,
+            //                 acceptedDeal: _actualAcceptedDeal,
+            //                 editingMode: true,
+            //                 isCustomer: isCustomer,
+            //               ),
+            //             ),
+            //           );
+            //         },
+            //       ),
+            //       _buildActionButton(
+            //         'Hacer contraoferta',
+            //         colorScheme.primary,
+            //         colorScheme,
+            //         onTap: () {
+            //           _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
+            //         },
+            //       ),
+            //       _buildActionButton(
+            //         'Paquete recibido',
+            //         colorScheme.secondary,
+            //         colorScheme,
+            //         onTap: () {
+            //           _mostrarModalPaqueteRecibido();
+            //         },
+            //       ),
+            //     ],
+            //   ),
+            //   const SizedBox(height: 24),
+            // ] else ...[
+            //   // Vista para provider
+            //   if (_actualAcceptedDeal) ...[
+            //     _buildInfoSection(
+            //       'Asignación de flota',
+            //       [
+            //         if (_currentAssignment != null) ...[
+            //           // Mostrar información de la asignación actual
+            //           Container(
+            //             width: double.infinity,
+            //             padding: const EdgeInsets.all(16),
+            //             decoration: BoxDecoration(
+            //               color: rcColor7,
+            //               borderRadius: BorderRadius.circular(12),
+            //               border: Border.all(
+            //                 color: colorScheme.primary.withOpacity(0.3),
+            //                 width: 1,
+            //               ),
+            //             ),
+            //             child: Column(
+            //               crossAxisAlignment: CrossAxisAlignment.start,
+            //               children: [
+            //                 Text(
+            //                   'Asignación actual:',
+            //                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            //                         color: rcColor6,
+            //                         fontWeight: FontWeight.w600,
+            //                       ),
+            //                 ),
+            //                 const SizedBox(height: 8),
+            //                 FutureBuilder<Map<String, String?>>(
+            //                   future: _getAssignmentDetails(),
+            //                   builder: (context, snapshot) {
+            //                     if (snapshot.connectionState == ConnectionState.waiting) {
+            //                       return const CircularProgressIndicator();
+            //                     }
+            //                     final details = snapshot.data ?? {};
+            //                     return Column(
+            //                       crossAxisAlignment: CrossAxisAlignment.start,
+            //                       children: [
+            //                         if (details['vehicle'] != null)
+            //                           Text(
+            //                             'Flota: ${details['vehicle']}',
+            //                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            //                                   color: rcColor6,
+            //                                 ),
+            //                           ),
+            //                         if (details['driver'] != null) ...[
+            //                           const SizedBox(height: 4),
+            //                           Text(
+            //                             'Conductor: ${details['driver']}',
+            //                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            //                                   color: rcColor6,
+            //                                 ),
+            //                           ),
+            //                         ],
+            //                       ],
+            //                     );
+            //                   },
+            //                 ),
+            //               ],
+            //             ),
+            //           ),
+            //           const SizedBox(height: 12),
+            //         ],
+            //         _buildActionButton(
+            //           _currentAssignment != null
+            //               ? 'Modificar asignación'
+            //               : 'Asignar flota y conductor',
+            //           colorScheme.primary,
+            //           colorScheme,
+            //           onTap: () {
+            //             _mostrarModalAsignarFlotaConductor();
+            //           },
+            //         ),
+            //       ],
+            //     ),
+            //     const SizedBox(height: 24),
+            //   ],
+            //   _buildInfoSection(
+            //     'Acciones',
+            //     [
+            //       _buildActionButton(
+            //         'Ver Cotización actual',
+            //         colorScheme.primary,
+            //         colorScheme,
+            //         onTap: () {
+            //           Navigator.of(context).push(
+            //             MaterialPageRoute(
+            //               builder: (context) => EditCotizacionPage(
+            //                 acceptedDeal: _actualAcceptedDeal,
+            //                 editingMode: false,
+            //                 isCustomer: isCustomer,
+            //               ),
+            //             ),
+            //           );
+            //         },
+            //       ),
+            //       _buildActionButton(
+            //         'Editar carga actual',
+            //         colorScheme.secondary,
+            //         colorScheme,
+            //         onTap: () {
+            //           Navigator.of(context).push(
+            //             MaterialPageRoute(
+            //               builder: (context) => EditCotizacionPage(
+            //                 quoteId: widget.quoteId,
+            //                 acceptedDeal: _actualAcceptedDeal,
+            //                 editingMode: true,
+            //                 isCustomer: isCustomer,
+            //               ),
+            //             ),
+            //           );
+            //         },
+            //       ),
+            //       _buildActionButton(
+            //         'Hacer contraoferta',
+            //         colorScheme.primary,
+            //         colorScheme,
+            //         onTap: () {
+            //           _mostrarModalContraoferta(_currentQuotePrice > 0 ? _currentQuotePrice : 1000.0);
+            //         },
+            //       ),
+            //       _buildActionButton('Pago realizado', colorScheme.secondary, colorScheme),
+            //     ],
+            //   ),
+            //   const SizedBox(height: 24),
+            // ],
           ],
         ),
       ),
@@ -1131,93 +2085,86 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDropdownField(String label, String value, ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: rcColor6,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Container(
+  Widget _buildChecklistItem(ChecklistItemDto item, ColorScheme colorScheme) {
+    // Mapear códigos a nombres legibles
+    String itemName = _getChecklistItemName(item.code);
+    
+    return Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: rcColor1,
-            borderRadius: BorderRadius.circular(12),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: rcColor8.withOpacity(0.3),
+          color: item.isCompleted
+              ? rcColor8.withOpacity(0.2)
+              : rcColor8.withOpacity(0.15),
               width: 1,
             ),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: rcColor6,
-                    ),
+          // Checkbox más pequeño y discreto
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: item.isCompleted ? colorScheme.primary.withOpacity(0.3) : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: item.isCompleted
+                    ? colorScheme.primary.withOpacity(0.5)
+                    : rcColor8.withOpacity(0.4),
+                width: 1.5,
               ),
-              Icon(
-                Icons.keyboard_arrow_down,
-                color: rcColor8,
-              ),
-            ],
+            ),
+            child: item.isCompleted
+                ? Icon(
+                    Icons.check,
+                    size: 12,
+                    color: colorScheme.primary,
+                  )
+                : null,
+          ),
+          const SizedBox(width: 10),
+          // Descripción más discreta
+          Expanded(
+            child: Text(
+              itemName,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: item.isCompleted ? rcColor8 : rcColor6,
+                    decoration: item.isCompleted
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
+                    fontSize: 13,
+                  ),
           ),
         ),
       ],
+      ),
     );
   }
 
-  Widget _buildDocumentButton(String label, ColorScheme colorScheme) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colorScheme.secondary,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            // TODO: Descargar documento
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.download,
-                  color: rcWhite,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: rcWhite,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  String _getChecklistItemName(String code) {
+    switch (code) {
+      case 'DOC_GRE_REMITENTE':
+        return 'Guía de Remisión';
+      case 'DOC_GRE_TRANSPORTISTA':
+        return 'Guía de Transportista';
+      case 'PAYMENT_MADE':
+        return 'Pago Realizado';
+      case 'PAYMENT_CONFIRMED':
+        return 'Pago Confirmado';
+      case 'ASSIGNMENT_SET':
+        return 'Asignación de Flota';
+      case 'SHIPMENT_SENT':
+        return 'Carga Enviada';
+      case 'SHIPMENT_RECEIVED':
+        return 'Carga Recibida';
+      default:
+        return code;
+    }
   }
 
   void _mostrarModalContraoferta(double precioActual) {
@@ -1228,18 +2175,89 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: CounterofferModal(
-          precioActual: precioActual,
-          onRealizarContraoferta: (nuevoPrecio) {
+          precioActual: _currentQuotePrice > 0 ? _currentQuotePrice : precioActual,
+          onRealizarContraoferta: (nuevoPrecio) async {
+            Navigator.of(context).pop(); // Cerrar el modal
+            
+            // Mostrar el card de contraoferta inmediatamente (optimista)
+            if (mounted) {
             setState(() {
               _otherPersonAction = ChatAction.counteroffer;
               _counterofferPrice = nuevoPrecio;
               _isMyCounteroffer = true;
-            });
-            // TODO: Enviar contraoferta al servidor
+                _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
+              });
+            }
+            
+            // Aplicar la contraoferta usando el mismo endpoint que editar cotización
+            try {
+              await _aplicarContraoferta(nuevoPrecio);
+              
+              // Recargar mensajes para obtener el evento del sistema
+              // El card se mantendrá visible hasta que llegue el mensaje del sistema
+              if (mounted) {
+                await _loadChatMessages();
+                
+                // Después de recargar, verificar si ya llegó el mensaje del sistema
+                // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
+                final hasSystemMessage = _messages.any((msg) => 
+                  msg.isSystemEvent && 
+                  msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                  msg.isMe
+                );
+                
+                if (hasSystemMessage && mounted) {
+                  // Si ya llegó el mensaje del sistema, limpiar la acción temporal
+                  setState(() {
+                    _otherPersonAction = ChatAction.none;
+                  });
+                }
+              }
+            } catch (e) {
+              // En caso de error, mantener el card visible pero mostrar error
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al enviar contraoferta: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           },
         ),
       ),
     );
+  }
+  
+  Future<void> _aplicarContraoferta(double nuevoPrecio) async {
+    try {
+      // Obtener la versión de la cotización
+      final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId);
+      
+      // Crear el cambio de precio
+      final changes = QuoteChangeRequestDto(
+        items: [
+          QuoteChangeItemDto(
+            fieldCode: 'PRICE_TOTAL',
+            oldValue: _currentQuotePrice.toStringAsFixed(2),
+            newValue: nuevoPrecio.toStringAsFixed(2),
+          ),
+        ],
+      );
+      
+      // Aplicar cambios
+      await _dealsRepository.applyQuoteChanges(
+        widget.quoteId,
+        changes,
+        ifMatch: versionDto.version.toString(),
+      );
+      
+      print('✅ Contraoferta aplicada exitosamente');
+    } catch (e) {
+      print('❌ Error applying counteroffer: $e');
+      rethrow;
+    }
   }
 
   void _mostrarModalCancelarTrato() {
@@ -1266,16 +2284,69 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) => Dialog(
+      builder: (dialogContext) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: PaymentMadeModal(
-          onConfirmarPago: () {
+          onConfirmarPago: () async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            try {
+              await _dealsRepository.paymentMade(widget.quoteId);
+              
+              if (mounted) {
             setState(() {
               _otherPersonAction = ChatAction.paymentMade;
               _isMyPayment = true;
             });
-            // TODO: Enviar confirmación de pago al servidor
+                
+                // Recargar mensajes para obtener el evento del sistema
+                await _loadChatMessages();
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al confirmar pago: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalConfirmarRecepcionPago() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: PaymentConfirmModal(
+          onConfirmarRecepcion: () async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            try {
+              await _dealsRepository.paymentConfirm(widget.quoteId);
+              
+              if (mounted) {
+                // Recargar mensajes para obtener el evento del sistema
+                await _loadChatMessages();
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al confirmar recepción del pago: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           },
         ),
       ),
@@ -1329,8 +2400,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   void _mostrarModalAceptarTrato() {
-    final isProvider = widget.userRole == UserRole.provider;
-    
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -1338,36 +2407,32 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: AcceptDealModal(
-          onAceptarTrato: () {
-            if (isProvider) {
-              // Si es proveedor, mostrar modal de asignar flota y conductor
-              // Esperar a que se cierre el modal actual antes de mostrar el siguiente
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  _mostrarModalAsignarFlotaConductor();
-                }
-              });
-            } else {
-              // Si es cliente, mostrar la card directamente
-              WidgetsBinding.instance.addPostFrameCallback((_) {
+          onAceptarTrato: () async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            // Crear la aceptación en el servidor
+            try {
+              await _dealsRepository.createAcceptance(widget.quoteId);
+              
+              // Mostrar la card directamente
                 if (mounted) {
                   setState(() {
-                    _actualAcceptedDeal = true; // Cambiar acceptedDeal a true
                     _otherPersonAction = ChatAction.dealAcceptance;
                     _isMyDealAcceptance = true;
-                    // Actualizar el TabController para mostrar las tabs
-                    _tabController.dispose();
-                    _tabController = TabController(
-                      length: 2,
-                      vsync: this,
-                    );
-                    _tabController.addListener(() {
-                      setState(() {});
-                    });
-                  });
-                }
-              });
-              // TODO: Enviar aceptación de trato al servidor
+                });
+                
+                // Recargar mensajes para obtener el evento del sistema
+                await _loadChatMessages();
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al aceptar trato: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             }
           },
         ),
@@ -1375,7 +2440,25 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     );
   }
 
-  void _mostrarModalAsignarFlotaConductor() {
+  void _mostrarModalAsignarFlotaConductor() async {
+    // Obtener el companyId del quoteDetail
+    int? companyId;
+    try {
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+      companyId = quoteDetail.companyId;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar información: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
+    if (mounted) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -1383,30 +2466,154 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: AssignFleetDriverModal(
-          onAsignar: (fleet, driver) {
+            companyId: companyId!,
+            quoteId: widget.quoteId,
+            dealsRepository: _dealsRepository,
+            onAsignar: (driverId, vehicleId) async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            try {
+              // Asignar flota y conductor
+              await _dealsRepository.assignFleetDriver(
+                widget.quoteId,
+                driverId,
+                vehicleId,
+              );
+              
+              // La aceptación ya se creó en el paso anterior, solo actualizar UI
             if (mounted) {
               setState(() {
-                _actualAcceptedDeal = true; // Cambiar acceptedDeal a true
                 _otherPersonAction = ChatAction.dealAcceptance;
                 _isMyDealAcceptance = true;
-                _assignedFleet = fleet;
-                _assignedDriver = driver;
-                // Actualizar el TabController para mostrar las tabs
-                _tabController.dispose();
-                _tabController = TabController(
-                  length: 2,
-                  vsync: this,
-                );
-                _tabController.addListener(() {
-                  setState(() {});
                 });
-              });
+                
+                // Recargar mensajes y asignación
+                await _loadChatMessages();
+                await _loadAssignment();
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al asignar flota y conductor: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             }
-            // TODO: Enviar aceptación de trato con flota y conductor al servidor
           },
         ),
       ),
     );
+    }
+  }
+  
+  Future<Map<String, String?>> _getAssignmentDetails() async {
+    if (_currentAssignment == null) {
+      return {};
+    }
+    
+    try {
+      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+      final companyId = quoteDetail.companyId;
+      
+      final drivers = await _dealsRepository.getDrivers(companyId);
+      final vehicles = await _dealsRepository.getVehicles(companyId);
+      
+      final driver = drivers.firstWhere(
+        (d) => d.driverId == _currentAssignment!.driverId,
+        orElse: () => drivers.first,
+      );
+      
+      final vehicle = vehicles.firstWhere(
+        (v) => v.vehicleId == _currentAssignment!.vehicleId,
+        orElse: () => vehicles.first,
+      );
+      
+      return {
+        'driver': driver.fullName,
+        'vehicle': '${vehicle.name} - ${vehicle.plate}',
+      };
+    } catch (e) {
+      print('❌ Error getting assignment details: $e');
+      return {};
+    }
+  }
+
+  /// Confirma una aceptación de trato pendiente
+  Future<void> _confirmarAceptacion(int acceptanceId) async {
+    try {
+      await _dealsRepository.confirmAcceptance(widget.quoteId, acceptanceId);
+      
+      if (mounted) {
+        // Recargar mensajes para obtener el estado actualizado
+        await _loadChatMessages();
+        
+        // Actualizar el estado si es necesario
+        await _loadQuoteState();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al confirmar aceptación: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Rechaza una aceptación de trato pendiente
+  Future<void> _rechazarAceptacion(int acceptanceId) async {
+    try {
+      await _dealsRepository.rejectAcceptance(widget.quoteId, acceptanceId);
+      
+      if (mounted) {
+        // Recargar mensajes para obtener el estado actualizado
+        await _loadChatMessages();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al rechazar aceptación: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Navega a la pantalla de ver cotización con los cambios aplicados
+  Future<void> _verCotizacionConCambios(int quoteId, int changeId) async {
+    try {
+      // Obtener los detalles del cambio
+      final change = await _dealsRepository.getChange(quoteId, changeId);
+      
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => EditCotizacionPage(
+              quoteId: quoteId,
+              acceptedDeal: _actualAcceptedDeal,
+              editingMode: false,
+              isCustomer: widget.userRole == UserRole.customer,
+              changePreview: change, // Pasar el cambio para preview
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar cambios: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _mostrarModalCargaEnviada() {
@@ -1417,16 +2624,72 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
         child: ShipmentSentModal(
-          onConfirmarEnvio: () {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+          onConfirmarEnvio: () async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            try {
+              await _dealsRepository.shipmentSent(widget.quoteId);
+              
               if (mounted) {
                 setState(() {
                   _otherPersonAction = ChatAction.shipmentSent;
                   _isMyShipmentSent = true;
                 });
+                
+                // Recargar mensajes para obtener el evento del sistema
+                await _loadChatMessages();
               }
-            });
-            // TODO: Enviar confirmación de envío de carga al servidor
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al confirmar envío: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalConfirmarRecepcionEnvio() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: PackageReceivedModal(
+          onConfirmarRecepcion: () async {
+            Navigator.of(dialogContext).pop(); // Cerrar el modal
+            
+            try {
+              await _dealsRepository.shipmentReceived(widget.quoteId);
+              
+              if (mounted) {
+                // Recargar mensajes para obtener el evento del sistema
+                await _loadChatMessages();
+                
+                // Mostrar modal de calificación después de confirmar recepción
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    _mostrarModalCalificacion();
+                  }
+                });
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al confirmar recepción del envío: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           },
         ),
       ),
@@ -1434,11 +2697,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   // Métodos para manejar mensajes, archivos y fotos
-  void _enviarMensaje() {
-    if (_messageController.text.trim().isNotEmpty) {
+  Future<void> _enviarMensaje() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+
+    // Crear mensaje optimista
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
       final newMessage = ChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        text: _messageController.text.trim(),
+      id: tempId,
+      text: text,
         isMe: true,
         timestamp: DateTime.now(),
         type: MessageType.text,
@@ -1446,12 +2713,31 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       
       setState(() {
         _messages.add(newMessage);
+      _messageController.clear();
       });
       
-      _messageController.clear();
       _scrollToBottom();
       
-      // TODO: Enviar mensaje al servidor
+    // Enviar mensaje al servidor
+    try {
+      await _dealsRepository.sendTextMessage(widget.quoteId, text);
+      // Recargar mensajes para obtener el mensaje real del servidor
+      await _loadChatMessages();
+    } catch (e) {
+      // Remover mensaje optimista en caso de error
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == tempId);
+        _messageController.text = text; // Restaurar el texto
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al enviar mensaje: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1545,9 +2831,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Future<void> _enviarImagen(String imagePath) async {
+    final caption = _messageController.text.trim();
+    
+    // Crear mensaje optimista
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final newMessage = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      text: _messageController.text.trim(),
+      id: tempId,
+      text: caption.isNotEmpty ? caption : null,
       isMe: true,
       timestamp: DateTime.now(),
       imagePath: imagePath,
@@ -1561,7 +2851,48 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     
     _scrollToBottom();
     
-    // TODO: Subir imagen al servidor
+    // Subir imagen y enviar mensaje al servidor
+    try {
+      // Mostrar indicador de carga
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Subiendo imagen...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Subir imagen a Cloudinary
+      final uploadResponse = await _dealsRepository.uploadImage(imagePath);
+
+      // Enviar mensaje de imagen
+      await _dealsRepository.sendImageMessage(
+        widget.quoteId,
+        uploadResponse.secureUrl,
+        caption: caption.isNotEmpty ? caption : null,
+      );
+
+      // Recargar mensajes para obtener el mensaje real del servidor
+      await _loadChatMessages();
+    } catch (e) {
+      // Remover mensaje optimista en caso de error
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == tempId);
+        if (caption.isNotEmpty) {
+          _messageController.text = caption; // Restaurar el texto
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al enviar imagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -1574,6 +2905,651 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         );
       }
     });
+  }
+
+  /// Genera la guía correspondiente según el rol del usuario, la sube y la guarda/actualiza en el servidor
+  Future<void> _generarYSubirGuias() async {
+    try {
+      final isCustomer = widget.userRole == UserRole.customer;
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCustomer 
+              ? 'Generando y subiendo guía de remisión...'
+              : 'Generando y subiendo guía de transportista...'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Obtener guías existentes
+      final existingGuides = await _dealsRepository.getGuides(widget.quoteId);
+
+      if (isCustomer) {
+        // Customer: solo procesar guía de remitente
+        final remitentePdf = await _generarPdfRemitente();
+        final remitenteUpload = await _dealsRepository.uploadPdf(remitentePdf.path);
+
+        final remitenteGuide = existingGuides.firstWhere(
+          (g) => g.type == 'REMISION',
+          orElse: () => GuideDto(guideId: 0, type: 'REMISION', quoteId: widget.quoteId, guideUrl: ''),
+        );
+
+        if (remitenteGuide.guideId == 0) {
+          // Crear nueva guía
+          await _dealsRepository.createGuide(widget.quoteId, 'REMISION', remitenteUpload.cdnUrl);
+        } else {
+          // Actualizar guía existente
+          await _dealsRepository.updateGuideUrl(widget.quoteId, remitenteGuide.guideId, remitenteUpload.cdnUrl);
+        }
+        // Llamar al endpoint específico para registrar la guía
+        try {
+          await _dealsRepository.getRemitenteGuide(widget.quoteId);
+        } catch (e) {
+          print('⚠️ No se pudo llamar al endpoint de remitente: $e');
+        }
+      } else {
+        // Provider: solo procesar guía de transportista
+        final transportistaPdf = await _generarPdfTransportista();
+        final transportistaUpload = await _dealsRepository.uploadPdf(transportistaPdf.path);
+
+        final transportistaGuide = existingGuides.firstWhere(
+          (g) => g.type == 'TRANSPORTISTA',
+          orElse: () => GuideDto(guideId: 0, type: 'TRANSPORTISTA', quoteId: widget.quoteId, guideUrl: ''),
+        );
+
+        if (transportistaGuide.guideId == 0) {
+          // Crear nueva guía
+          await _dealsRepository.createGuide(widget.quoteId, 'TRANSPORTISTA', transportistaUpload.cdnUrl);
+        } else {
+          // Actualizar guía existente
+          await _dealsRepository.updateGuideUrl(widget.quoteId, transportistaGuide.guideId, transportistaUpload.cdnUrl);
+        }
+        // Llamar al endpoint específico para registrar la guía
+        try {
+          await _dealsRepository.getTransportistaGuide(widget.quoteId);
+        } catch (e) {
+          print('⚠️ No se pudo llamar al endpoint de transportista: $e');
+        }
+      }
+
+      // Recargar guías
+      await _loadGuides();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCustomer
+              ? 'Guía de remisión generada y subida exitosamente'
+              : 'Guía de transportista generada y subida exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error generando y subiendo guías: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar guía: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Genera el PDF de la guía del remitente y retorna el archivo
+  Future<File> _generarPdfRemitente() async {
+    // Obtener todos los datos necesarios
+    final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+    final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+    
+    // Determinar quién es el remitente y destinatario
+    final isCustomer = widget.userRole == UserRole.customer;
+    
+    // Obtener datos del remitente (quien creó la solicitud)
+    UserIdentityDto? remitenteData;
+    CompanyDto? remitenteCompany;
+    try {
+      remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del remitente: $e');
+    }
+    
+    // Obtener datos del destinatario (la otra parte)
+    UserIdentityDto? destinatarioData;
+    CompanyDto? destinatarioCompany;
+    if (isCustomer) {
+      try {
+        destinatarioCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
+      } catch (e) {
+        print('⚠️ No se pudo obtener datos del destinatario: $e');
+      }
+    } else {
+      try {
+        destinatarioData = await _identityRepository.getUserIdentity(quoteDetail.createdByAccountId);
+      } catch (e) {
+        print('⚠️ No se pudo obtener datos del destinatario: $e');
+      }
+    }
+    
+    // Obtener datos de transporte si existe asignación
+    AssignmentDto? assignment;
+    DriverDto? driver;
+    VehicleDto? vehicle;
+    try {
+      assignment = await _dealsRepository.getAssignment(widget.quoteId);
+      if (assignment != null) {
+        final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
+        final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
+        driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
+        vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
+      }
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos de transporte: $e');
+    }
+
+    // Generar PDF
+    final pdf = pw.Document();
+    
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // Título
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'GUÍA DE REMISIÓN ELECTRÓNICA',
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            
+            // Remitente
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'REMITENTE (Dueño de la carga)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
+                  _buildPdfRow('Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
+                  if (remitenteCompany != null) _buildPdfRow('Nombre Comercial:', remitenteCompany.tradeName),
+                  if (remitenteCompany != null) _buildPdfRow('Dirección:', remitenteCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Destinatario
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'DESTINATARIO',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
+                  _buildPdfRow('Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
+                  if (destinatarioCompany != null) _buildPdfRow('Dirección:', destinatarioCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Traslado / Ruta
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRASLADO / RUTA',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('Punto de Partida:', requestDetail.origin.fullAddress),
+                  _buildPdfRow('Punto de Llegada:', requestDetail.destination.fullAddress),
+                  _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Bienes Transportados
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'BIENES TRANSPORTADOS',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Table(
+                    border: pw.TableBorder.all(),
+                    children: [
+                      pw.TableRow(
+                        decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Descripción', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Cantidad', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Peso (kg)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                        ],
+                      ),
+                      ...requestDetail.items.map((item) => pw.TableRow(
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.itemName, style: const pw.TextStyle(fontSize: 9))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.quantity.toString(), style: const pw.TextStyle(fontSize: 9))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.totalWeightKg.toStringAsFixed(2), style: const pw.TextStyle(fontSize: 9))),
+                        ],
+                      )),
+                      pw.TableRow(
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.itemsCount.toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.totalWeightKg.toStringAsFixed(2), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Transporte (si existe)
+            if (assignment != null && driver != null && vehicle != null)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'TRANSPORTE',
+                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 8),
+                    _buildPdfRow('Placa del Vehículo:', vehicle.plate),
+                    _buildPdfRow('Nombre del Conductor:', driver.fullName),
+                    _buildPdfRow('N° de Licencia:', driver.licenseNumber),
+                  ],
+                ),
+              ),
+          ];
+        },
+      ),
+    );
+
+    // Guardar PDF
+    final output = await getTemporaryDirectory();
+    final file = File('${output.path}/guia_remision_remitente_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  /// Genera el PDF de la guía del transportista y retorna el archivo
+  Future<File> _generarPdfTransportista() async {
+    // Obtener todos los datos necesarios
+    final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+    final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+    final transportistaCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
+    
+    // Obtener datos del remitente y destinatario
+    UserIdentityDto? remitenteData;
+    CompanyDto? remitenteCompany;
+    try {
+      remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del remitente: $e');
+    }
+    
+    UserIdentityDto? destinatarioData;
+    CompanyDto? destinatarioCompany;
+    try {
+      destinatarioData = await _identityRepository.getUserIdentity(quoteDetail.createdByAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del destinatario: $e');
+    }
+    
+    // Obtener datos de transporte
+    AssignmentDto? assignment;
+    DriverDto? driver;
+    VehicleDto? vehicle;
+    try {
+      assignment = await _dealsRepository.getAssignment(widget.quoteId);
+      if (assignment != null) {
+        final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
+        final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
+        driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
+        vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
+      }
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos de transporte: $e');
+    }
+
+    // Generar PDF
+    final pdf = pw.Document();
+    
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // Título
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'GUÍA DE REMISIÓN DEL TRANSPORTISTA',
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            
+            // Transportista
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRANSPORTISTA (Empresa que traslada)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC:', transportistaCompany.ruc),
+                  _buildPdfRow('Razón Social:', transportistaCompany.legalName),
+                  _buildPdfRow('Nombre Comercial:', transportistaCompany.tradeName),
+                  _buildPdfRow('Dirección:', transportistaCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Unidad de transporte y conductor
+            if (assignment != null && driver != null && vehicle != null)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'UNIDAD DE TRANSPORTE Y CONDUCTOR',
+                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 8),
+                    _buildPdfRow('Marca y Placa:', '${vehicle.name} - ${vehicle.plate}'),
+                    _buildPdfRow('Nombre del Conductor:', driver.fullName),
+                    _buildPdfRow('N° de Licencia:', driver.licenseNumber),
+                  ],
+                ),
+              ),
+            pw.SizedBox(height: 15),
+            
+            // Remitente y Destinatario
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'REMITENTE Y DESTINATARIO (Referenciales)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Remitente:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      _buildPdfRow('  RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
+                      _buildPdfRow('  Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
+                      pw.SizedBox(height: 8),
+                      pw.Text('Destinatario:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      _buildPdfRow('  RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
+                      _buildPdfRow('  Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Traslado / Ruta
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRASLADO / RUTA',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('Distrito y Departamento de Partida:', '${requestDetail.origin.districtText}, ${requestDetail.origin.departmentName}'),
+                  _buildPdfRow('Distrito y Departamento de Llegada:', '${requestDetail.destination.districtText}, ${requestDetail.destination.departmentName}'),
+                  _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Bienes Transportados (Resumen)
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'BIENES TRANSPORTADOS (Resumen)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Descripción de la carga:', style: const pw.TextStyle(fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      ...requestDetail.items.map((item) => pw.Padding(
+                        padding: const pw.EdgeInsets.only(left: 16, bottom: 4),
+                        child: pw.Text('• ${item.itemName} (${item.quantity} unidades)', style: const pw.TextStyle(fontSize: 9)),
+                      )),
+                      pw.SizedBox(height: 8),
+                      _buildPdfRow('Cantidad Total:', requestDetail.itemsCount.toString()),
+                      _buildPdfRow('Peso Total Aproximado:', '${requestDetail.totalWeightKg.toStringAsFixed(2)} kg'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Quién paga el flete
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'QUIÉN PAGA EL FLETE',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  if (requestDetail.paymentOnDelivery)
+                    _buildPdfRow('Paga:', 'Destinatario - ${destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? "N/A"}')
+                  else
+                    _buildPdfRow('Paga:', 'Remitente - ${remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber}'),
+                ],
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    // Guardar PDF
+    final output = await getTemporaryDirectory();
+    final file = File('${output.path}/guia_remision_transportista_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  /// Abre la guía del remitente en el navegador
+  Future<void> _verGuiaRemitente() async {
+    try {
+      // Primero intentar usar la guía que ya tenemos en _guides
+      final existingGuide = _guides.firstWhere(
+        (g) => g.type == 'REMISION',
+        orElse: () => GuideDto(guideId: 0, type: 'REMISION', quoteId: widget.quoteId, guideUrl: ''),
+      );
+      
+      String guideUrl = existingGuide.guideUrl;
+      
+      // Si no tenemos la URL en _guides, intentar obtenerla del endpoint
+      if (guideUrl.isEmpty) {
+        print('⚠️ [ChatPage] URL no encontrada en _guides, consultando endpoint...');
+        final guide = await _dealsRepository.getRemitenteGuide(widget.quoteId);
+        guideUrl = guide.guideUrl;
+        print('🔗 [ChatPage] URL obtenida del endpoint: $guideUrl');
+      } else {
+        print('🔗 [ChatPage] URL de guía remitente (de _guides): $guideUrl');
+      }
+      
+      if (guideUrl.isEmpty) {
+        throw Exception('La URL de la guía está vacía');
+      }
+      
+      final uri = Uri.parse(guideUrl);
+      print('🔗 [ChatPage] URI parseado: $uri');
+      
+      final canLaunch = await canLaunchUrl(uri);
+      print('🔗 [ChatPage] ¿Puede abrir URL? $canLaunch');
+      
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Intentar abrir de todas formas
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          throw Exception('No se pudo abrir la URL: $guideUrl. Error: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error abriendo guía de remitente: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir guía: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Abre la guía del transportista en el navegador
+  Future<void> _verGuiaTransportista() async {
+    try {
+      print('🔍 [ChatPage] _guides actual: ${_guides.map((g) => '${g.type}: ${g.guideUrl}').join(', ')}');
+      
+      // Primero intentar usar la guía que ya tenemos en _guides
+      GuideDto? existingGuide;
+      try {
+        existingGuide = _guides.firstWhere((g) => g.type == 'TRANSPORTISTA');
+      } catch (e) {
+        print('⚠️ [ChatPage] No se encontró guía TRANSPORTISTA en _guides');
+        existingGuide = null;
+      }
+      
+      String guideUrl = existingGuide?.guideUrl ?? '';
+      print('🔍 [ChatPage] URL de _guides: "$guideUrl" (isEmpty: ${guideUrl.isEmpty})');
+      
+      // Si no tenemos la URL en _guides, intentar obtenerla del endpoint
+      if (guideUrl.isEmpty) {
+        print('⚠️ [ChatPage] URL no encontrada en _guides, consultando endpoint...');
+        final guide = await _dealsRepository.getTransportistaGuide(widget.quoteId);
+        print('🔍 [ChatPage] GuideDto completo del endpoint: guideId=${guide.guideId}, type=${guide.type}, quoteId=${guide.quoteId}, guideUrl="${guide.guideUrl}"');
+        guideUrl = guide.guideUrl;
+        print('🔗 [ChatPage] URL obtenida del endpoint: "$guideUrl" (isEmpty: ${guideUrl.isEmpty})');
+      } else {
+        print('🔗 [ChatPage] URL de guía transportista (de _guides): "$guideUrl"');
+      }
+      
+      if (guideUrl.isEmpty) {
+        print('❌ [ChatPage] La URL está vacía después de todos los intentos');
+        throw Exception('La URL de la guía está vacía. Verifica que la guía haya sido generada correctamente.');
+      }
+      
+      final uri = Uri.parse(guideUrl);
+      print('🔗 [ChatPage] URI parseado: $uri');
+      
+      final canLaunch = await canLaunchUrl(uri);
+      print('🔗 [ChatPage] ¿Puede abrir URL? $canLaunch');
+      
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Intentar abrir de todas formas
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          throw Exception('No se pudo abrir la URL: $guideUrl. Error: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error abriendo guía de transportista: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir guía: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Helper para construir filas en el PDF
+  pw.Widget _buildPdfRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 6),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value.isNotEmpty ? value : 'N/A',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

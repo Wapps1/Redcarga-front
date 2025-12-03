@@ -10,6 +10,7 @@ class ApiConstants {
   
   // Identity endpoints
   static String get verifyAndCreatePersonEndpoint => '$baseUrl/identity/verify-and-create';
+  static String identityByAccount(int accountId) => '$baseUrl/identity/$accountId';
   
   // Provider endpoints
   static String get registerCompanyEndpoint => '$baseUrl/providers/company/verify-and-register';

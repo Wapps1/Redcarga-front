@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:red_carga/costants/api_constants.dart';
 import 'package:red_carga/core/session/session_store.dart';
-import 'package:red_carga/features/fleet/domain/driver.dart';
+import 'package:red_carga/features/shared/domain/driver.dart';
 
 class DriverService {
   final SessionStore _sessionStore;

@@ -72,6 +72,8 @@ extension AppLoginResponseDtoToDomain on AppLoginResponseDto {
       roles: rolesList,
       companyId: account?.companyId,
       companyRoles: companyRolesList,
+      username: account?.username,
+      email: account?.email,
     );
   }
 

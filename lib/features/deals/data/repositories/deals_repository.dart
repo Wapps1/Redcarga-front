@@ -58,6 +58,24 @@ class DealsRepository {
     }
   }
 
+  /// Obtiene las cotizaciones generales por company_id y state
+  Future<List<QuoteDto>> getQuotesGeneral(
+    int companyId,
+    String state,
+  ) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getQuotesGeneral(
+        companyId,
+        state,
+        accessToken,
+      );
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting quotes general: $e');
+      rethrow;
+    }
+  }
+
   /// Obtiene los detalles de una cotización específica
   Future<QuoteDetailDto> getQuoteDetail(int quoteId) async {
     try {

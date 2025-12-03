@@ -64,6 +64,7 @@ class ApiConstants {
   // --------------------------
   static String get createQuoteEndpoint => '$baseUrl/api/deals/quotes';
   static String rejectQuote(int quoteId) => '$baseUrl/api/deals/quotes/$quoteId:reject';
+  static String getQuotesGeneral(int companyId, String state) => '$baseUrl/api/deals/quotes/general?company_id=$companyId&state=$state';
   
   // --------------------------
   // Dimensions estimation endpoints

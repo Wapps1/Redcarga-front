@@ -10,6 +10,7 @@ import 'package:red_carga/features/deals/data/models/request_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
 import 'package:red_carga/features/deals/data/models/company_dto.dart';
+import 'package:red_carga/features/deals/data/models/checklist_item_dto.dart';
 import 'package:red_carga/core/session/session_store.dart';
 import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
 import 'package:intl/intl.dart';
@@ -121,24 +122,79 @@ class _CotizacionPageState extends State<CotizacionPage>
     });
     
     try {
-      // Determinar el estado según el tab activo
-      String? state;
+      List<QuoteDto> quotes = [];
+      
       switch (_tabController.index) {
-        case 0: // Todas
-          state = 'PENDIENTE';
+        case 0: // Todas - sin filtrar por state (como antes)
+          quotes = await _dealsRepository.getQuotesByRequestId(
+            requestId,
+            state: 'PENDIENTE',
+          );
           break;
-        case 1: // En trato
-          state = 'TRATO';
+        case 1: // En trato - llamar 2 veces con "ACEPTADA" y "TRATO"
+          final quotesAceptadas = await _dealsRepository.getQuotesByRequestId(
+            requestId,
+            state: 'ACEPTADA',
+          );
+          final quotesTrato = await _dealsRepository.getQuotesByRequestId(
+            requestId,
+            state: 'TRATO',
+          );
+          // Combinar ambas listas, evitando duplicados por quoteId
+          final quoteIds = <int>{};
+          quotes = [];
+          for (var quote in [...quotesAceptadas, ...quotesTrato]) {
+            if (!quoteIds.contains(quote.quoteId)) {
+              quoteIds.add(quote.quoteId);
+              quotes.add(quote);
+            }
+          }
           break;
-        case 2: // En marcha
-          state = 'ACEPTADA';
+        case 2: // En marcha - solo "ACEPTADA" y filtrar por checklist
+          final quotesAceptadas = await _dealsRepository.getQuotesByRequestId(
+            requestId,
+            state: 'ACEPTADA',
+          );
+          
+          print('📦 [CotizacionPage] Quotes aceptadas encontradas: ${quotesAceptadas.length}');
+          
+          // Filtrar quotes que tengan SHIPMENT_SENT en el checklist (debe existir el registro)
+          final filteredQuotes = <QuoteDto>[];
+          for (var quote in quotesAceptadas) {
+            try {
+              final checklistItems = await _dealsRepository.getChecklistItems(quote.quoteId);
+              print('📋 [CotizacionPage] Quote ${quote.quoteId} - Checklist items: ${checklistItems.length}');
+              print('📋 [CotizacionPage] Items: ${checklistItems.map((i) => '${i.code}:${i.statusCode}').join(', ')}');
+              
+              // Verificar si hay un item con code "SHIPMENT_SENT" y statusCode "DONE"
+              final shipmentSentItem = checklistItems.firstWhere(
+                (item) => item.code == 'SHIPMENT_SENT',
+                orElse: () => ChecklistItemDto(
+                  instanceItemId: 0,
+                  instanceId: 0,
+                  code: '',
+                  statusCode: '',
+                ),
+              );
+              
+              final hasShipmentSentDone = shipmentSentItem.code == 'SHIPMENT_SENT' && 
+                                         shipmentSentItem.statusCode == 'DONE';
+              print('📦 [CotizacionPage] Quote ${quote.quoteId} - SHIPMENT_SENT status: ${shipmentSentItem.statusCode}, Tiene DONE: $hasShipmentSentDone');
+              
+              if (hasShipmentSentDone) {
+                filteredQuotes.add(quote);
+                print('✅ [CotizacionPage] Quote ${quote.quoteId} agregada a filtradas');
+              }
+            } catch (e) {
+              print('⚠️ Error loading checklist for quote ${quote.quoteId}: $e');
+              // Si hay error al cargar el checklist, no incluir la quote
+            }
+          }
+          
+          print('📦 [CotizacionPage] Quotes filtradas finales: ${filteredQuotes.length}');
+          quotes = filteredQuotes;
           break;
       }
-      
-      final quotes = await _dealsRepository.getQuotesByRequestId(
-        requestId,
-        state: state,
-      );
       
       // Cargar detalles de cada cotización y datos de empresas
       final Map<int, QuoteDetailDto> details = {};

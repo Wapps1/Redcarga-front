@@ -6,10 +6,12 @@ import 'quotation_page.dart';
 
 class DetallesSolicitudPage extends StatefulWidget {
   final Map<String, dynamic> solicitud;
+  final bool fromAcceptedTab;
 
   const DetallesSolicitudPage({
     super.key,
     required this.solicitud,
+    this.fromAcceptedTab = false,
   });
 
   @override
@@ -143,8 +145,8 @@ class _DetallesSolicitudPageState extends State<DetallesSolicitudPage> {
                                   child: _buildInformacionSolicitud(),
                                 ),
                     ),
-                    // Botones de acción
-                    _buildActionButtons(),
+                    // Botones de acción (solo si NO viene del tab de aceptadas)
+                    if (!widget.fromAcceptedTab) _buildActionButtons(),
                   ],
                 ),
               ),

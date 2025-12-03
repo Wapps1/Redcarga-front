@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
+import '../../../deals/presentation/pages/deals_chat.dart';
+import '../../../main/presentation/pages/main_page.dart';
+import '../../../../core/session/session_store.dart';
+import '../../../../features/auth/domain/models/value/role_code.dart';
 
 class ResumenSolicitudPage extends StatelessWidget {
   final Map<String, dynamic> solicitud;
+  final bool fromAcceptedTab;
+  final int? quoteId;
 
   const ResumenSolicitudPage({
     super.key,
     required this.solicitud,
+    this.fromAcceptedTab = false,
+    this.quoteId,
   });
 
   @override
@@ -76,12 +84,105 @@ class ResumenSolicitudPage extends StatelessWidget {
                         const SizedBox(height: 20),
                         // Artículos
                         _buildArticulosSection(articulos, totalArticulos, pesoTotal),
+                        // Botón Ir al chat (solo si viene del tab de aceptadas)
+                        if (fromAcceptedTab && quoteId != null) ...[
+                          const SizedBox(height: 20),
+                          _buildIrAlChatButton(context),
+                        ],
                       ],
                     ),
                   ),
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a provider ya que estamos en la vista de solicitudes del proveedor
+    return UserRole.provider;
+  }
+  
+  Widget _buildIrAlChatButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [rcColor4, rcColor5],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () async {
+              if (quoteId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('No se encontró la cotización para esta solicitud'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              
+              // Obtener el rol del usuario
+              final userRole = await _getUserRole();
+              
+              // Obtener el nombre del cliente
+              final nombre = solicitud['nombre'] as String? ?? 'Cliente';
+              
+              // Navegar al chat
+              if (context.mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatPage(
+                      quoteId: quoteId!,
+                      nombre: nombre,
+                      userRole: userRole,
+                      acceptedDeal: true,
+                    ),
+                  ),
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: const Center(
+                child: Text(
+                  'Ir al chat',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: rcWhite,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

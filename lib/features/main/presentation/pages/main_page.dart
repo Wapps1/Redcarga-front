@@ -4,9 +4,9 @@ import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_pag
 import 'package:red_carga/features/home/presentation/pages/home_page.dart';
 import 'package:red_carga/features/providers/presentation/pages/provider_profile_page.dart';
 import 'package:red_carga/features/customers/presentation/pages/customer_profile_page.dart';
-import 'package:red_carga/features/drivers/presentation/pages/driver_home_page.dart';
-import 'package:red_carga/features/drivers/presentation/pages/driver_map_page.dart';
-import 'package:red_carga/features/drivers/presentation/pages/driver_profile_page.dart';
+import 'package:red_carga/features/driver/presentation/pages/driver_home_page.dart';
+import 'package:red_carga/features/driver/presentation/pages/driver_map_page.dart';
+import 'package:red_carga/features/driver/presentation/pages/driver_profile_page.dart';
 import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
 import 'package:red_carga/features/requests/presentation/pages/requests_page.dart';
 import 'package:red_carga/features/planning/presentation/pages/routes_page.dart';

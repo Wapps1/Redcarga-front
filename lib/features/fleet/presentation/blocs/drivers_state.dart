@@ -1,4 +1,4 @@
-import 'package:red_carga/features/fleet/domain/driver.dart';
+import 'package:red_carga/features/shared/domain/driver.dart';
 
 enum DriversStatus { initial, loading, success, failure }
 

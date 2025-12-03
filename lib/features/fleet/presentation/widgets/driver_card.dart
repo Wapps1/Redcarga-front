@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:red_carga/core/theme.dart';
-import 'package:red_carga/features/fleet/domain/driver.dart';
+import 'package:red_carga/features/shared/domain/driver.dart';
 
 class DriverCard extends StatelessWidget {
   final Driver driver;

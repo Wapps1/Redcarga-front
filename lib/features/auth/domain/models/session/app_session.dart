@@ -12,6 +12,8 @@ class AppSession {
   final List<RoleCode> roles;
   final int? companyId;
   final List<RoleCode> companyRoles;
+  final String? username;
+  final String? email;
 
   AppSession({
     required this.sessionId,
@@ -23,5 +25,7 @@ class AppSession {
     required this.roles,
     this.companyId,
     this.companyRoles = const [],
+    this.username,
+    this.email,
   });
 }

@@ -13,6 +13,8 @@ import '../models/driver_dto.dart';
 import '../models/vehicle_dto.dart';
 import '../models/assignment_dto.dart';
 import '../models/checklist_item_dto.dart';
+import '../models/pdf_upload_response.dart';
+import '../models/guide_dto.dart';
 import '../../../requests/data/models/image_upload_response.dart';
 
 class DealsRepository {
@@ -385,6 +387,72 @@ class DealsRepository {
       return await _dealsService.getChecklistItems(quoteId, accessToken);
     } catch (e) {
       print('❌ [DealsRepository] Error getting checklist items: $e');
+      rethrow;
+    }
+  }
+
+  /// Sube un archivo PDF al servidor
+  Future<PdfUploadResponse> uploadPdf(String pdfPath) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.uploadPdf(pdfPath, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error uploading PDF: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene las guías de remisión de una cotización
+  Future<List<GuideDto>> getGuides(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getGuides(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting guides: $e');
+      rethrow;
+    }
+  }
+
+  /// Crea una nueva guía de remisión
+  Future<void> createGuide(int quoteId, String type, String guideUrl) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.createGuide(quoteId, type, guideUrl, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error creating guide: $e');
+      rethrow;
+    }
+  }
+
+  /// Actualiza la URL de una guía existente
+  Future<void> updateGuideUrl(int quoteId, int guideId, String guideUrl) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.updateGuideUrl(quoteId, guideId, guideUrl, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error updating guide URL: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la guía del transportista
+  Future<GuideDto> getTransportistaGuide(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getTransportistaGuide(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting transportista guide: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la guía del remitente
+  Future<GuideDto> getRemitenteGuide(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getRemitenteGuide(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting remitente guide: $e');
       rethrow;
     }
   }

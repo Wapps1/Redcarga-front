@@ -30,10 +30,12 @@ import 'package:red_carga/features/deals/data/repositories/deals_repository.dart
 import 'package:red_carga/features/deals/data/models/quote_change_request_dto.dart';
 import 'package:red_carga/features/deals/data/models/assignment_dto.dart';
 import 'package:red_carga/features/deals/data/models/checklist_item_dto.dart';
+import 'package:red_carga/features/deals/data/models/guide_dto.dart';
 import 'package:red_carga/features/deals/data/models/company_dto.dart';
 import 'package:red_carga/features/deals/data/models/driver_dto.dart';
 import 'package:red_carga/features/deals/data/models/vehicle_dto.dart';
 import 'package:red_carga/core/session/session_store.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
 import 'package:red_carga/features/auth/data/repositories/identity_remote_repository_impl.dart';
 import 'package:red_carga/features/auth/data/services/identity_service.dart';
@@ -147,6 +149,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   List<ChecklistItemDto> _checklistItems = []; // Items del checklist
   bool _isLoadingChecklist = false; // Estado de carga del checklist
   bool _isChecklistExpanded = false; // Estado de expansión del checklist
+  List<GuideDto> _guides = []; // Guías de remisión
+  bool _isLoadingGuides = false; // Estado de carga de guías
 
   @override
   void initState() {
@@ -198,6 +202,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     _loadChatMessages();
     _loadAssignment();
     _loadChecklist();
+    _loadGuides();
   }
   
   Future<void> _loadChecklist() async {
@@ -219,6 +224,34 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLoadingChecklist = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadGuides() async {
+    try {
+      setState(() {
+        _isLoadingGuides = true;
+      });
+      
+      final guides = await _dealsRepository.getGuides(widget.quoteId);
+      print('📋 [ChatPage] Guías cargadas: ${guides.length}');
+      for (var guide in guides) {
+        print('📋 [ChatPage] - ${guide.type}: guideId=${guide.guideId}, guideUrl="${guide.guideUrl}"');
+      }
+      
+      if (mounted) {
+        setState(() {
+          _guides = guides;
+          _isLoadingGuides = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading guides: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingGuides = false;
         });
       }
     }
@@ -1815,8 +1848,28 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
               _buildInfoSection(
                 'Documentos',
                 [
-                  _buildDocumentButton('Guía de remisión', colorScheme),
-                  _buildDocumentButton('Guía de transportista', colorScheme),
+                  _buildActionButton(
+                    'Generar guías de remisión',
+                    colorScheme.primary,
+                    colorScheme,
+                    onTap: () => _generarYSubirGuias(),
+                  ),
+                  // Customer: solo ver guía de remisión
+                  if (isCustomer && _guides.any((g) => g.type == 'REMISION'))
+                    _buildActionButton(
+                      'Ver guía de remisión',
+                      colorScheme.secondary,
+                      colorScheme,
+                      onTap: () => _verGuiaRemitente(),
+                    ),
+                  // Provider: solo ver guía de transportista
+                  if (!isCustomer && _guides.any((g) => g.type == 'TRANSPORTISTA'))
+                    _buildActionButton(
+                      'Ver guía de transportista',
+                      colorScheme.secondary,
+                      colorScheme,
+                      onTap: () => _verGuiaTransportista(),
+                    ),
                 ],
               ),
             // Acciones comentadas por ahora
@@ -2112,66 +2165,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       default:
         return code;
     }
-  }
-
-  String _formatChecklistDate(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      return '${date.day}/${date.month}/${date.year}';
-    } catch (e) {
-      return dateString;
-    }
-  }
-
-  Widget _buildDocumentButton(String label, ColorScheme colorScheme) {
-    final isRemitente = label == 'Guía de remisión';
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: colorScheme.secondary,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            if (isRemitente) {
-              await _generarGuiaRemitente();
-            } else {
-              await _generarGuiaTransportista();
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.download,
-                  color: rcWhite,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: rcWhite,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   void _mostrarModalContraoferta(double precioActual) {
@@ -2914,228 +2907,88 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     });
   }
 
-  /// Genera la Guía de Remisión del Remitente en PDF
-  Future<void> _generarGuiaRemitente() async {
+  /// Genera la guía correspondiente según el rol del usuario, la sube y la guarda/actualiza en el servidor
+  Future<void> _generarYSubirGuias() async {
     try {
-      // Mostrar indicador de carga
+      final isCustomer = widget.userRole == UserRole.customer;
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Generando guía de remisión del remitente...'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(isCustomer 
+              ? 'Generando y subiendo guía de remisión...'
+              : 'Generando y subiendo guía de transportista...'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
 
-      // Obtener todos los datos necesarios
-      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
-      final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
-      
-      // Determinar quién es el remitente y destinatario
-      final isCustomer = widget.userRole == UserRole.customer;
-      
-      // Obtener datos del remitente (quien creó la solicitud)
-      UserIdentityDto? remitenteData;
-      CompanyDto? remitenteCompany;
-      try {
-        remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
-      } catch (e) {
-        print('⚠️ No se pudo obtener datos del remitente: $e');
-      }
-      
-      // Obtener datos del destinatario (la otra parte)
-      UserIdentityDto? destinatarioData;
-      CompanyDto? destinatarioCompany;
+      // Obtener guías existentes
+      final existingGuides = await _dealsRepository.getGuides(widget.quoteId);
+
       if (isCustomer) {
-        // Si soy customer, el destinatario es el provider
+        // Customer: solo procesar guía de remitente
+        final remitentePdf = await _generarPdfRemitente();
+        final remitenteUpload = await _dealsRepository.uploadPdf(remitentePdf.path);
+
+        final remitenteGuide = existingGuides.firstWhere(
+          (g) => g.type == 'REMISION',
+          orElse: () => GuideDto(guideId: 0, type: 'REMISION', quoteId: widget.quoteId, guideUrl: ''),
+        );
+
+        if (remitenteGuide.guideId == 0) {
+          // Crear nueva guía
+          await _dealsRepository.createGuide(widget.quoteId, 'REMISION', remitenteUpload.cdnUrl);
+        } else {
+          // Actualizar guía existente
+          await _dealsRepository.updateGuideUrl(widget.quoteId, remitenteGuide.guideId, remitenteUpload.cdnUrl);
+        }
+        // Llamar al endpoint específico para registrar la guía
         try {
-          destinatarioCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
+          await _dealsRepository.getRemitenteGuide(widget.quoteId);
         } catch (e) {
-          print('⚠️ No se pudo obtener datos del destinatario: $e');
+          print('⚠️ No se pudo llamar al endpoint de remitente: $e');
         }
       } else {
-        // Si soy provider, el destinatario es el customer
+        // Provider: solo procesar guía de transportista
+        final transportistaPdf = await _generarPdfTransportista();
+        final transportistaUpload = await _dealsRepository.uploadPdf(transportistaPdf.path);
+
+        final transportistaGuide = existingGuides.firstWhere(
+          (g) => g.type == 'TRANSPORTISTA',
+          orElse: () => GuideDto(guideId: 0, type: 'TRANSPORTISTA', quoteId: widget.quoteId, guideUrl: ''),
+        );
+
+        if (transportistaGuide.guideId == 0) {
+          // Crear nueva guía
+          await _dealsRepository.createGuide(widget.quoteId, 'TRANSPORTISTA', transportistaUpload.cdnUrl);
+        } else {
+          // Actualizar guía existente
+          await _dealsRepository.updateGuideUrl(widget.quoteId, transportistaGuide.guideId, transportistaUpload.cdnUrl);
+        }
+        // Llamar al endpoint específico para registrar la guía
         try {
-          destinatarioData = await _identityRepository.getUserIdentity(quoteDetail.createdByAccountId);
+          await _dealsRepository.getTransportistaGuide(widget.quoteId);
         } catch (e) {
-          print('⚠️ No se pudo obtener datos del destinatario: $e');
+          print('⚠️ No se pudo llamar al endpoint de transportista: $e');
         }
       }
-      
-      // Obtener datos de transporte si existe asignación
-      AssignmentDto? assignment;
-      DriverDto? driver;
-      VehicleDto? vehicle;
-      try {
-        assignment = await _dealsRepository.getAssignment(widget.quoteId);
-        if (assignment != null) {
-          final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
-          final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
-          driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
-          vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
-        }
-      } catch (e) {
-        print('⚠️ No se pudo obtener datos de transporte: $e');
-      }
 
-      // Generar PDF
-      final pdf = pw.Document();
-      
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(40),
-          build: (pw.Context context) {
-            return [
-              // Título
-              pw.Header(
-                level: 0,
-                child: pw.Text(
-                  'GUÍA DE REMISIÓN ELECTRÓNICA',
-                  style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              
-              // Remitente
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'REMITENTE (Dueño de la carga)',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
-                    _buildPdfRow('Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
-                    if (remitenteCompany != null) _buildPdfRow('Nombre Comercial:', remitenteCompany.tradeName),
-                    if (remitenteCompany != null) _buildPdfRow('Dirección:', remitenteCompany.address),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Destinatario
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'DESTINATARIO',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
-                    _buildPdfRow('Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
-                    if (destinatarioCompany != null) _buildPdfRow('Dirección:', destinatarioCompany.address),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Traslado / Ruta
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'TRASLADO / RUTA',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('Punto de Partida:', requestDetail.origin.fullAddress),
-                    _buildPdfRow('Punto de Llegada:', requestDetail.destination.fullAddress),
-                    _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Bienes Transportados
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'BIENES TRANSPORTADOS',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Table(
-                  border: pw.TableBorder.all(),
-                  children: [
-                    pw.TableRow(
-                      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                      children: [
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Descripción', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Cantidad', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Peso (kg)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                      ],
-                    ),
-                    ...requestDetail.items.map((item) => pw.TableRow(
-                      children: [
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.itemName, style: const pw.TextStyle(fontSize: 9))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.quantity.toString(), style: const pw.TextStyle(fontSize: 9))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.totalWeightKg.toStringAsFixed(2), style: const pw.TextStyle(fontSize: 9))),
-                      ],
-                    )),
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.itemsCount.toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.totalWeightKg.toStringAsFixed(2), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
-                      ],
-                    ),
-                  ],
-                  ),
-                ],
-                ),
-              ),
-              
-              // Transporte (si existe)
-              if (assignment != null && driver != null && vehicle != null)
-                pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 15),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'TRANSPORTE',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                      ),
-                      pw.SizedBox(height: 8),
-                      _buildPdfRow('Placa del Vehículo:', vehicle.plate),
-                      _buildPdfRow('Nombre del Conductor:', driver.fullName),
-                      _buildPdfRow('N° de Licencia:', driver.licenseNumber),
-                    ],
-                  ),
-                ),
-            ];
-          },
-        ),
-      );
+      // Recargar guías
+      await _loadGuides();
 
-      // Guardar PDF y compartir
-      final output = await getTemporaryDirectory();
-      final file = File('${output.path}/guia_remision_remitente_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
-      await file.writeAsBytes(await pdf.save());
-      
       if (mounted) {
-        // Compartir directamente el PDF
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Guía de Remisión del Remitente',
-          subject: 'Guía de Remisión del Remitente',
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCustomer
+              ? 'Guía de remisión generada y subida exitosamente'
+              : 'Guía de transportista generada y subida exitosamente'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
-      print('❌ Error generando guía de remitente: $e');
+      print('❌ Error generando y subiendo guías: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3147,237 +3000,526 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
-  /// Genera la Guía de Remisión del Transportista en PDF
-  Future<void> _generarGuiaTransportista() async {
+  /// Genera el PDF de la guía del remitente y retorna el archivo
+  Future<File> _generarPdfRemitente() async {
+    // Obtener todos los datos necesarios
+    final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+    final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+    
+    // Determinar quién es el remitente y destinatario
+    final isCustomer = widget.userRole == UserRole.customer;
+    
+    // Obtener datos del remitente (quien creó la solicitud)
+    UserIdentityDto? remitenteData;
+    CompanyDto? remitenteCompany;
     try {
-      // Mostrar indicador de carga
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Generando guía de remisión del transportista...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-
-      // Obtener todos los datos necesarios
-      final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
-      final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
-      final transportistaCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
-      
-      // Obtener datos del remitente y destinatario
-      UserIdentityDto? remitenteData;
-      CompanyDto? remitenteCompany;
+      remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del remitente: $e');
+    }
+    
+    // Obtener datos del destinatario (la otra parte)
+    UserIdentityDto? destinatarioData;
+    CompanyDto? destinatarioCompany;
+    if (isCustomer) {
       try {
-        remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
+        destinatarioCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
       } catch (e) {
-        print('⚠️ No se pudo obtener datos del remitente: $e');
+        print('⚠️ No se pudo obtener datos del destinatario: $e');
       }
-      
-      UserIdentityDto? destinatarioData;
-      CompanyDto? destinatarioCompany;
+    } else {
       try {
         destinatarioData = await _identityRepository.getUserIdentity(quoteDetail.createdByAccountId);
       } catch (e) {
         print('⚠️ No se pudo obtener datos del destinatario: $e');
       }
-      
-      // Obtener datos de transporte
-      AssignmentDto? assignment;
-      DriverDto? driver;
-      VehicleDto? vehicle;
-      try {
-        assignment = await _dealsRepository.getAssignment(widget.quoteId);
-        if (assignment != null) {
-          final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
-          final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
-          driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
-          vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
-        }
-      } catch (e) {
-        print('⚠️ No se pudo obtener datos de transporte: $e');
-      }
-
-      // Generar PDF
-      final pdf = pw.Document();
-      
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(40),
-          build: (pw.Context context) {
-            return [
-              // Título
-              pw.Header(
-                level: 0,
-                child: pw.Text(
-                  'GUÍA DE REMISIÓN DEL TRANSPORTISTA',
-                  style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              
-              // Transportista
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'TRANSPORTISTA (Empresa que traslada)',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('RUC:', transportistaCompany.ruc),
-                    _buildPdfRow('Razón Social:', transportistaCompany.legalName),
-                    _buildPdfRow('Nombre Comercial:', transportistaCompany.tradeName),
-                    _buildPdfRow('Dirección:', transportistaCompany.address),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Unidad de transporte y conductor
-              if (assignment != null && driver != null && vehicle != null)
-                pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 15),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'UNIDAD DE TRANSPORTE Y CONDUCTOR',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                      ),
-                      pw.SizedBox(height: 8),
-                      _buildPdfRow('Marca y Placa:', '${vehicle.name} - ${vehicle.plate}'),
-                      _buildPdfRow('Nombre del Conductor:', driver.fullName),
-                      _buildPdfRow('N° de Licencia:', driver.licenseNumber),
-                    ],
-                  ),
-                ),
-              pw.SizedBox(height: 15),
-              
-              // Remitente y Destinatario
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'REMITENTE Y DESTINATARIO (Referenciales)',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Remitente:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                    pw.SizedBox(height: 4),
-                    _buildPdfRow('  RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
-                    _buildPdfRow('  Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
-                    pw.SizedBox(height: 8),
-                    pw.Text('Destinatario:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                    pw.SizedBox(height: 4),
-                    _buildPdfRow('  RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
-                    _buildPdfRow('  Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
-                    ],
-                  ),
-                ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Traslado / Ruta
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'TRASLADO / RUTA',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('Distrito y Departamento de Partida:', '${requestDetail.origin.districtText}, ${requestDetail.origin.departmentName}'),
-                    _buildPdfRow('Distrito y Departamento de Llegada:', '${requestDetail.destination.districtText}, ${requestDetail.destination.departmentName}'),
-                    _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 15),
-              
-              // Bienes Transportados (Resumen)
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'BIENES TRANSPORTADOS (Resumen)',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Descripción de la carga:', style: const pw.TextStyle(fontSize: 10)),
-                    pw.SizedBox(height: 4),
-                    ...requestDetail.items.map((item) => pw.Padding(
-                      padding: const pw.EdgeInsets.only(left: 16, bottom: 4),
-                      child: pw.Text('• ${item.itemName} (${item.quantity} unidades)', style: const pw.TextStyle(fontSize: 9)),
-                    )),
-                    pw.SizedBox(height: 8),
-                    _buildPdfRow('Cantidad Total:', requestDetail.itemsCount.toString()),
-                    _buildPdfRow('Peso Total Aproximado:', '${requestDetail.totalWeightKg.toStringAsFixed(2)} kg'),
-                    ],
-                  ),
-                ],
-                ),
-              ),
-              
-              // Quién paga el flete
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 15),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'QUIÉN PAGA EL FLETE',
-                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    if (requestDetail.paymentOnDelivery)
-                      _buildPdfRow('Paga:', 'Destinatario - ${destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? "N/A"}')
-                    else
-                      _buildPdfRow('Paga:', 'Remitente - ${remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber}'),
-                  ],
-                ),
-              ),
-            ];
-          },
-        ),
-      );
-
-      // Guardar PDF y compartir
-      final output = await getTemporaryDirectory();
-      final file = File('${output.path}/guia_remision_transportista_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
-      await file.writeAsBytes(await pdf.save());
-      
-      if (mounted) {
-        // Compartir directamente el PDF
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Guía de Remisión del Transportista',
-          subject: 'Guía de Remisión del Transportista',
-        );
+    }
+    
+    // Obtener datos de transporte si existe asignación
+    AssignmentDto? assignment;
+    DriverDto? driver;
+    VehicleDto? vehicle;
+    try {
+      assignment = await _dealsRepository.getAssignment(widget.quoteId);
+      if (assignment != null) {
+        final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
+        final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
+        driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
+        vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
       }
     } catch (e) {
-      print('❌ Error generando guía de transportista: $e');
+      print('⚠️ No se pudo obtener datos de transporte: $e');
+    }
+
+    // Generar PDF
+    final pdf = pw.Document();
+    
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // Título
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'GUÍA DE REMISIÓN ELECTRÓNICA',
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            
+            // Remitente
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'REMITENTE (Dueño de la carga)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
+                  _buildPdfRow('Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
+                  if (remitenteCompany != null) _buildPdfRow('Nombre Comercial:', remitenteCompany.tradeName),
+                  if (remitenteCompany != null) _buildPdfRow('Dirección:', remitenteCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Destinatario
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'DESTINATARIO',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
+                  _buildPdfRow('Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
+                  if (destinatarioCompany != null) _buildPdfRow('Dirección:', destinatarioCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Traslado / Ruta
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRASLADO / RUTA',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('Punto de Partida:', requestDetail.origin.fullAddress),
+                  _buildPdfRow('Punto de Llegada:', requestDetail.destination.fullAddress),
+                  _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Bienes Transportados
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'BIENES TRANSPORTADOS',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Table(
+                    border: pw.TableBorder.all(),
+                    children: [
+                      pw.TableRow(
+                        decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Descripción', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Cantidad', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Peso (kg)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                        ],
+                      ),
+                      ...requestDetail.items.map((item) => pw.TableRow(
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.itemName, style: const pw.TextStyle(fontSize: 9))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.quantity.toString(), style: const pw.TextStyle(fontSize: 9))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(item.totalWeightKg.toStringAsFixed(2), style: const pw.TextStyle(fontSize: 9))),
+                        ],
+                      )),
+                      pw.TableRow(
+                        children: [
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.itemsCount.toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                          pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text(requestDetail.totalWeightKg.toStringAsFixed(2), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Transporte (si existe)
+            if (assignment != null && driver != null && vehicle != null)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'TRANSPORTE',
+                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 8),
+                    _buildPdfRow('Placa del Vehículo:', vehicle.plate),
+                    _buildPdfRow('Nombre del Conductor:', driver.fullName),
+                    _buildPdfRow('N° de Licencia:', driver.licenseNumber),
+                  ],
+                ),
+              ),
+          ];
+        },
+      ),
+    );
+
+    // Guardar PDF
+    final output = await getTemporaryDirectory();
+    final file = File('${output.path}/guia_remision_remitente_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  /// Genera el PDF de la guía del transportista y retorna el archivo
+  Future<File> _generarPdfTransportista() async {
+    // Obtener todos los datos necesarios
+    final quoteDetail = await _dealsRepository.getQuoteDetail(widget.quoteId);
+    final requestDetail = await _dealsRepository.getRequestDetail(quoteDetail.requestId);
+    final transportistaCompany = await _dealsRepository.getCompany(quoteDetail.companyId);
+    
+    // Obtener datos del remitente y destinatario
+    UserIdentityDto? remitenteData;
+    CompanyDto? remitenteCompany;
+    try {
+      remitenteData = await _identityRepository.getUserIdentity(requestDetail.requesterAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del remitente: $e');
+    }
+    
+    UserIdentityDto? destinatarioData;
+    CompanyDto? destinatarioCompany;
+    try {
+      destinatarioData = await _identityRepository.getUserIdentity(quoteDetail.createdByAccountId);
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos del destinatario: $e');
+    }
+    
+    // Obtener datos de transporte
+    AssignmentDto? assignment;
+    DriverDto? driver;
+    VehicleDto? vehicle;
+    try {
+      assignment = await _dealsRepository.getAssignment(widget.quoteId);
+      if (assignment != null) {
+        final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
+        final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
+        driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
+        vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
+      }
+    } catch (e) {
+      print('⚠️ No se pudo obtener datos de transporte: $e');
+    }
+
+    // Generar PDF
+    final pdf = pw.Document();
+    
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return [
+            // Título
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'GUÍA DE REMISIÓN DEL TRANSPORTISTA',
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            
+            // Transportista
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRANSPORTISTA (Empresa que traslada)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('RUC:', transportistaCompany.ruc),
+                  _buildPdfRow('Razón Social:', transportistaCompany.legalName),
+                  _buildPdfRow('Nombre Comercial:', transportistaCompany.tradeName),
+                  _buildPdfRow('Dirección:', transportistaCompany.address),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Unidad de transporte y conductor
+            if (assignment != null && driver != null && vehicle != null)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 15),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'UNIDAD DE TRANSPORTE Y CONDUCTOR',
+                      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 8),
+                    _buildPdfRow('Marca y Placa:', '${vehicle.name} - ${vehicle.plate}'),
+                    _buildPdfRow('Nombre del Conductor:', driver.fullName),
+                    _buildPdfRow('N° de Licencia:', driver.licenseNumber),
+                  ],
+                ),
+              ),
+            pw.SizedBox(height: 15),
+            
+            // Remitente y Destinatario
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'REMITENTE Y DESTINATARIO (Referenciales)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Remitente:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      _buildPdfRow('  RUC:', remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber),
+                      _buildPdfRow('  Razón Social / Nombres:', remitenteData?.fullName ?? remitenteCompany?.legalName ?? requestDetail.requesterNameSnapshot),
+                      pw.SizedBox(height: 8),
+                      pw.Text('Destinatario:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      _buildPdfRow('  RUC / Documento:', destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? 'N/A'),
+                      _buildPdfRow('  Razón Social / Nombres:', destinatarioData?.fullName ?? destinatarioCompany?.legalName ?? 'N/A'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Traslado / Ruta
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'TRASLADO / RUTA',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  _buildPdfRow('Distrito y Departamento de Partida:', '${requestDetail.origin.districtText}, ${requestDetail.origin.departmentName}'),
+                  _buildPdfRow('Distrito y Departamento de Llegada:', '${requestDetail.destination.districtText}, ${requestDetail.destination.departmentName}'),
+                  _buildPdfRow('Fecha de Inicio:', DateFormat('dd/MM/yyyy').format(DateTime.parse(requestDetail.createdAt))),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Bienes Transportados (Resumen)
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'BIENES TRANSPORTADOS (Resumen)',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Descripción de la carga:', style: const pw.TextStyle(fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      ...requestDetail.items.map((item) => pw.Padding(
+                        padding: const pw.EdgeInsets.only(left: 16, bottom: 4),
+                        child: pw.Text('• ${item.itemName} (${item.quantity} unidades)', style: const pw.TextStyle(fontSize: 9)),
+                      )),
+                      pw.SizedBox(height: 8),
+                      _buildPdfRow('Cantidad Total:', requestDetail.itemsCount.toString()),
+                      _buildPdfRow('Peso Total Aproximado:', '${requestDetail.totalWeightKg.toStringAsFixed(2)} kg'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 15),
+            
+            // Quién paga el flete
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'QUIÉN PAGA EL FLETE',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 8),
+                  if (requestDetail.paymentOnDelivery)
+                    _buildPdfRow('Paga:', 'Destinatario - ${destinatarioData?.docNumber ?? destinatarioCompany?.ruc ?? "N/A"}')
+                  else
+                    _buildPdfRow('Paga:', 'Remitente - ${remitenteData?.ruc ?? remitenteCompany?.ruc ?? requestDetail.requesterDocNumber}'),
+                ],
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+
+    // Guardar PDF
+    final output = await getTemporaryDirectory();
+    final file = File('${output.path}/guia_remision_transportista_${widget.quoteId}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  /// Abre la guía del remitente en el navegador
+  Future<void> _verGuiaRemitente() async {
+    try {
+      // Primero intentar usar la guía que ya tenemos en _guides
+      final existingGuide = _guides.firstWhere(
+        (g) => g.type == 'REMISION',
+        orElse: () => GuideDto(guideId: 0, type: 'REMISION', quoteId: widget.quoteId, guideUrl: ''),
+      );
+      
+      String guideUrl = existingGuide.guideUrl;
+      
+      // Si no tenemos la URL en _guides, intentar obtenerla del endpoint
+      if (guideUrl.isEmpty) {
+        print('⚠️ [ChatPage] URL no encontrada en _guides, consultando endpoint...');
+        final guide = await _dealsRepository.getRemitenteGuide(widget.quoteId);
+        guideUrl = guide.guideUrl;
+        print('🔗 [ChatPage] URL obtenida del endpoint: $guideUrl');
+      } else {
+        print('🔗 [ChatPage] URL de guía remitente (de _guides): $guideUrl');
+      }
+      
+      if (guideUrl.isEmpty) {
+        throw Exception('La URL de la guía está vacía');
+      }
+      
+      final uri = Uri.parse(guideUrl);
+      print('🔗 [ChatPage] URI parseado: $uri');
+      
+      final canLaunch = await canLaunchUrl(uri);
+      print('🔗 [ChatPage] ¿Puede abrir URL? $canLaunch');
+      
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Intentar abrir de todas formas
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          throw Exception('No se pudo abrir la URL: $guideUrl. Error: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error abriendo guía de remitente: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al generar guía: $e'),
+            content: Text('Error al abrir guía: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Abre la guía del transportista en el navegador
+  Future<void> _verGuiaTransportista() async {
+    try {
+      print('🔍 [ChatPage] _guides actual: ${_guides.map((g) => '${g.type}: ${g.guideUrl}').join(', ')}');
+      
+      // Primero intentar usar la guía que ya tenemos en _guides
+      GuideDto? existingGuide;
+      try {
+        existingGuide = _guides.firstWhere((g) => g.type == 'TRANSPORTISTA');
+      } catch (e) {
+        print('⚠️ [ChatPage] No se encontró guía TRANSPORTISTA en _guides');
+        existingGuide = null;
+      }
+      
+      String guideUrl = existingGuide?.guideUrl ?? '';
+      print('🔍 [ChatPage] URL de _guides: "$guideUrl" (isEmpty: ${guideUrl.isEmpty})');
+      
+      // Si no tenemos la URL en _guides, intentar obtenerla del endpoint
+      if (guideUrl.isEmpty) {
+        print('⚠️ [ChatPage] URL no encontrada en _guides, consultando endpoint...');
+        final guide = await _dealsRepository.getTransportistaGuide(widget.quoteId);
+        print('🔍 [ChatPage] GuideDto completo del endpoint: guideId=${guide.guideId}, type=${guide.type}, quoteId=${guide.quoteId}, guideUrl="${guide.guideUrl}"');
+        guideUrl = guide.guideUrl;
+        print('🔗 [ChatPage] URL obtenida del endpoint: "$guideUrl" (isEmpty: ${guideUrl.isEmpty})');
+      } else {
+        print('🔗 [ChatPage] URL de guía transportista (de _guides): "$guideUrl"');
+      }
+      
+      if (guideUrl.isEmpty) {
+        print('❌ [ChatPage] La URL está vacía después de todos los intentos');
+        throw Exception('La URL de la guía está vacía. Verifica que la guía haya sido generada correctamente.');
+      }
+      
+      final uri = Uri.parse(guideUrl);
+      print('🔗 [ChatPage] URI parseado: $uri');
+      
+      final canLaunch = await canLaunchUrl(uri);
+      print('🔗 [ChatPage] ¿Puede abrir URL? $canLaunch');
+      
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Intentar abrir de todas formas
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          throw Exception('No se pudo abrir la URL: $guideUrl. Error: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error abriendo guía de transportista: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al abrir guía: $e'),
             backgroundColor: Colors.red,
           ),
         );

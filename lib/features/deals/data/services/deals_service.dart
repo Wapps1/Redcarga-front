@@ -16,6 +16,8 @@ import '../models/driver_dto.dart';
 import '../models/vehicle_dto.dart';
 import '../models/assignment_dto.dart';
 import '../models/checklist_item_dto.dart';
+import '../models/pdf_upload_response.dart';
+import '../models/guide_dto.dart';
 import '../../../requests/data/models/image_upload_response.dart';
 
 class DealsService {
@@ -483,6 +485,234 @@ class DealsService {
       }
     } catch (e) {
       print('❌ [DealsService] Error uploading image: $e');
+      rethrow;
+    }
+  }
+
+  /// Sube un archivo PDF al servidor
+  Future<PdfUploadResponse> uploadPdf(String pdfPath, String accessToken) async {
+    final url = Uri.parse(ApiConstants.uploadPdfEndpoint);
+
+    print('🚀 [DealsService] POST $url (uploading PDF)');
+
+    try {
+      final file = File(pdfPath);
+      if (!await file.exists()) {
+        throw Exception('El archivo PDF no existe: $pdfPath');
+      }
+
+      final request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Bearer $accessToken';
+      request.headers['accept'] = 'application/json';
+
+      final fileStream = file.openRead();
+      final fileLength = await file.length();
+      final fileName = file.path.split('/').last;
+      final multipartFile = http.MultipartFile(
+        'file',
+        fileStream,
+        fileLength,
+        filename: fileName,
+        contentType: http.MediaType('application', 'pdf'),
+      );
+      request.files.add(multipartFile);
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 30 segundos');
+        },
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final uploadResponse = PdfUploadResponse.fromJson(json);
+        print('✅ [DealsService] PDF subido exitosamente: ${uploadResponse.cdnUrl}');
+        return uploadResponse;
+      } else {
+        throw Exception(_parseError(response, 'Failed to upload PDF'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error uploading PDF: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene las guías de remisión de una cotización
+  Future<List<GuideDto>> getGuides(int quoteId, String accessToken) async {
+    final url = Uri.parse(ApiConstants.getGuides(quoteId));
+
+    print('🚀 [DealsService] GET $url');
+
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+        return jsonList.map((json) => GuideDto.fromJson(json as Map<String, dynamic>)).toList();
+      } else {
+        throw Exception(_parseError(response, 'Failed to get guides'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting guides: $e');
+      rethrow;
+    }
+  }
+
+  /// Crea una nueva guía de remisión
+  Future<void> createGuide(int quoteId, String type, String guideUrl, String accessToken) async {
+    final url = Uri.parse(ApiConstants.createGuide(quoteId, type, guideUrl));
+
+    print('🚀 [DealsService] POST $url');
+
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(_parseError(response, 'Failed to create guide'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error creating guide: $e');
+      rethrow;
+    }
+  }
+
+  /// Actualiza la URL de una guía existente
+  Future<void> updateGuideUrl(int quoteId, int guideId, String guideUrl, String accessToken) async {
+    final url = Uri.parse(ApiConstants.updateGuideUrl(quoteId, guideId, guideUrl));
+
+    print('🚀 [DealsService] PATCH $url');
+
+    try {
+      final response = await _client.patch(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_parseError(response, 'Failed to update guide URL'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error updating guide URL: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la guía del transportista
+  Future<GuideDto> getTransportistaGuide(int quoteId, String accessToken) async {
+    final url = Uri.parse(ApiConstants.getTransportistaGuide(quoteId));
+
+    print('🚀 [DealsService] POST $url');
+
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        print('📥 [DealsService] Response JSON: $json');
+        return GuideDto.fromJson(json);
+      } else {
+        throw Exception(_parseError(response, 'Failed to get transportista guide'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting transportista guide: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la guía del remitente
+  Future<GuideDto> getRemitenteGuide(int quoteId, String accessToken) async {
+    final url = Uri.parse(ApiConstants.getRemitenteGuide(quoteId));
+
+    print('🚀 [DealsService] POST $url');
+
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        print('📥 [DealsService] Response body: ${response.body}');
+      }
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        print('📥 [DealsService] Response JSON: $json');
+        return GuideDto.fromJson(json);
+      } else {
+        throw Exception(_parseError(response, 'Failed to get remitente guide'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting remitente guide: $e');
       rethrow;
     }
   }

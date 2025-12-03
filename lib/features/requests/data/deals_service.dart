@@ -1,60 +1,62 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../costants/api_constants.dart';
-import 'models/create_request_dto.dart';
 import '../../../core/session/session_store.dart';
-import '../domain/models/request_detail.dart';
 
-class RequestsService {
+class DealsService {
   final http.Client _client;
   final SessionStore _sessionStore;
 
-  RequestsService({
+  DealsService({
     http.Client? client,
     SessionStore? sessionStore,
   })  : _client = client ?? http.Client(),
         _sessionStore = sessionStore ?? SessionStore();
 
-  /// Crea una nueva solicitud
-  Future<Map<String, dynamic>> createRequest(CreateRequestDto request) async {
-    final url = Uri.parse(ApiConstants.createRequestEndpoint);
-    final body = request.toJsonString();
+  /// Crea una cotización
+  Future<Map<String, dynamic>> createQuote({
+    required int requestId,
+    required int companyId,
+    required double totalAmount,
+    required String currency,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final url = Uri.parse(ApiConstants.createQuoteEndpoint);
     
-    // Obtener token de sesión si está disponible
     final appSession = await _sessionStore.getAppSession();
     
-    print('🔑 [RequestsService] Verificando autenticación...');
     if (appSession == null) {
-      print('❌ [RequestsService] No hay sesión activa');
       throw Exception('No hay sesión activa. Por favor inicia sesión nuevamente.');
     }
-    
+
     final token = appSession.accessToken;
     if (token.isEmpty) {
-      print('❌ [RequestsService] Token de acceso no disponible');
-      throw Exception('Token de acceso no disponible. Por favor inicia sesión nuevamente.');
+      throw Exception('Token de acceso no disponible.');
     }
-    
+
     // Verificar si el token está expirado
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now >= appSession.expiresAt) {
-      print('❌ [RequestsService] Token expirado. ExpiresAt: ${appSession.expiresAt}, Now: $now');
       throw Exception('Sesión expirada. Por favor, inicia sesión nuevamente');
     }
-    
-    print('✅ [RequestsService] Token encontrado: ${token.substring(0, 20)}...');
-    print('✅ [RequestsService] TokenType: ${appSession.tokenType.value}');
-    
+
+    final body = jsonEncode({
+      'requestId': requestId,
+      'companyId': companyId,
+      'totalAmount': totalAmount,
+      'currency': currency,
+      'items': items,
+    });
+
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'Authorization': '${appSession.tokenType.value} $token',
     };
-    
-    print('🚀 [RequestsService] Create Request - POST $url');
-    print('📤 [RequestsService] Headers: Authorization: Bearer ${token.substring(0, 20)}...');
-    print('📤 [RequestsService] Request body: $body');
-    
+
+    print('🚀 [DealsService] Create Quote - POST $url');
+    print('📤 [DealsService] Request body: $body');
+
     try {
       final response = await _client.post(
         url,
@@ -66,62 +68,57 @@ class RequestsService {
           throw Exception('Timeout: El backend no respondió en 30 segundos');
         },
       );
-      
-      print('📥 [RequestsService] Response status: ${response.statusCode}');
-      print('📥 [RequestsService] Response body: ${response.body}');
-      
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      print('📥 [DealsService] Response body: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
-        if (response.body.trim().isEmpty) {
-          return {'success': true, 'message': 'Solicitud creada exitosamente'};
-        }
-        
         try {
           return jsonDecode(response.body) as Map<String, dynamic>;
         } catch (e) {
-          return {'success': true, 'message': 'Solicitud creada exitosamente'};
+          return {'success': true};
         }
       } else if (response.statusCode == 401) {
-        print('❌ [RequestsService] Error 401 - No autorizado');
         throw Exception('No autorizado. Por favor inicia sesión nuevamente.');
       } else {
-        throw Exception(_parseError(response, 'Failed to create request'));
+        throw Exception(_parseError(response, 'Error al crear cotización'));
       }
     } catch (e) {
-      print('❌ [RequestsService] Error: $e');
+      print('❌ [DealsService] Error: $e');
       rethrow;
     }
   }
 
-  /// Obtiene el detalle completo de una solicitud
-  Future<RequestDetail> getRequestDetail(int requestId) async {
-    final url = Uri.parse(ApiConstants.requestById(requestId));
+  /// Rechaza una cotización
+  Future<void> rejectQuote(int quoteId) async {
+    final url = Uri.parse(ApiConstants.rejectQuote(quoteId));
     
     final appSession = await _sessionStore.getAppSession();
     
     if (appSession == null) {
       throw Exception('No hay sesión activa. Por favor inicia sesión nuevamente.');
     }
-    
+
     final token = appSession.accessToken;
     if (token.isEmpty) {
-      throw Exception('Token de acceso no disponible. Por favor inicia sesión nuevamente.');
+      throw Exception('Token de acceso no disponible.');
     }
-    
+
     // Verificar si el token está expirado
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now >= appSession.expiresAt) {
       throw Exception('Sesión expirada. Por favor, inicia sesión nuevamente');
     }
-    
+
     final headers = <String, String>{
       'Accept': 'application/json',
       'Authorization': '${appSession.tokenType.value} $token',
     };
-    
-    print('🚀 [RequestsService] Get Request Detail - GET $url');
-    
+
+    print('🚀 [DealsService] Reject Quote - POST $url');
+
     try {
-      final response = await _client.get(
+      final response = await _client.post(
         url,
         headers: headers,
       ).timeout(
@@ -130,22 +127,20 @@ class RequestsService {
           throw Exception('Timeout: El backend no respondió en 30 segundos');
         },
       );
-      
-      print('📥 [RequestsService] Response status: ${response.statusCode}');
-      print('📥 [RequestsService] Response body: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        return RequestDetail.fromJson(json);
+
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      print('📥 [DealsService] Response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('✅ [DealsService] Cotización rechazada exitosamente');
+        return;
       } else if (response.statusCode == 401) {
         throw Exception('No autorizado. Por favor inicia sesión nuevamente.');
-      } else if (response.statusCode == 404) {
-        throw Exception('Solicitud no encontrada');
       } else {
-        throw Exception(_parseError(response, 'Error al obtener detalle de solicitud'));
+        throw Exception(_parseError(response, 'Error al rechazar cotización'));
       }
     } catch (e) {
-      print('❌ [RequestsService] Error: $e');
+      print('❌ [DealsService] Error: $e');
       rethrow;
     }
   }
@@ -161,4 +156,5 @@ class RequestsService {
     }
   }
 }
+
 

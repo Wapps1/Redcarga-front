@@ -37,6 +37,7 @@ class ApiConstants {
   // Requests endpoints
   // --------------------------
   static String get createRequestEndpoint => '$baseUrl/requests/create-request';
+  static String requestById(int requestId) => '$baseUrl/requests/$requestId';
   
   // --------------------------
   // Geo endpoints
@@ -57,6 +58,12 @@ class ApiConstants {
   static String updateGuideUrl(int quoteId, int guideId, String guideUrl) => '$baseUrl/api/deals/$quoteId/docs/guides/$guideId/url?guideUrl=${Uri.encodeComponent(guideUrl)}';
   static String getTransportistaGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/transportista';
   static String getRemitenteGuide(int quoteId) => '$baseUrl/api/deals/$quoteId/docs/gre/remitente';
+
+  // --------------------------
+  // Deals endpoints
+  // --------------------------
+  static String get createQuoteEndpoint => '$baseUrl/api/deals/quotes';
+  static String rejectQuote(int quoteId) => '$baseUrl/api/deals/quotes/$quoteId:reject';
   
   // --------------------------
   // Dimensions estimation endpoints
@@ -70,4 +77,9 @@ class ApiConstants {
   static String providerRoutes(int companyId) => '$baseUrl/planning/providers/$companyId/routes';
   // POST/PUT/DELETE: Crear/actualizar/eliminar rutas de una compañía
   static String companyRoutes(int companyId) => '$baseUrl/planning/companies/$companyId/routes';
+  
+  // --------------------------
+  // Planning - Request Inbox endpoints
+  // --------------------------
+  static String requestInbox(int companyId) => '$baseUrl/planning/companies/$companyId/request-inbox';
 }

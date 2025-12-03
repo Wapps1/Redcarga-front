@@ -260,52 +260,8 @@ class _CotizacionPageState extends State<CotizacionPage> {
               ),
               const SizedBox(width: 8),
               // Imagen principal
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: rcColor7,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.image, color: rcColor8),
-              ),
-              const SizedBox(width: 12),
-              // Miniaturas
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        for (int i = 0; i < 3; i++)
-                          Container(
-                            width: 50,
-                            height: 50,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: rcColor7,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.image, size: 20, color: rcColor8),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () {
-                        // Ver fotos
-                      },
-                      icon: const Icon(Icons.photo_library, size: 16, color: rcColor4),
-                      label: const Text(
-                        'Ver fotos',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: rcColor4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: _buildImageSection(articulo),
               ),
             ],
           ),
@@ -495,8 +451,39 @@ class _CotizacionPageState extends State<CotizacionPage> {
           _buildOutlinedButton(
             'Rechazar Solicitud',
             null,
-            () {
-              // Rechazar solicitud
+            () async {
+              // Mostrar diálogo de confirmación
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Rechazar Solicitud'),
+                  content: const Text('¿Estás seguro de que deseas rechazar esta solicitud? Esta acción no se puede deshacer.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancelar'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      child: const Text('Rechazar'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirmed == true && mounted) {
+                // Por ahora, solo navegar de vuelta
+                // Nota: El endpoint de rechazar requiere un quoteId, 
+                // por lo que necesitarías crear una cotización primero o tener otro endpoint
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Solicitud rechazada'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
             },
           ),
         ],
@@ -571,6 +558,168 @@ class _CotizacionPageState extends State<CotizacionPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildImageSection(Map<String, dynamic> articulo) {
+    final imagenes = articulo['imagenes'] as List<dynamic>? ?? [];
+    final firstImage = imagenes.isNotEmpty ? imagenes[0] as String : null;
+    final otherImages = imagenes.length > 1 ? imagenes.sublist(1, imagenes.length > 4 ? 4 : imagenes.length).cast<String>() : <String>[];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Imagen principal
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: rcColor7,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: firstImage != null
+              ? GestureDetector(
+                  onTap: () => _showImageGallery(imagenes.cast<String>(), 0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      firstImage,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, color: rcColor8),
+                    ),
+                  ),
+                )
+              : const Icon(Icons.image, color: rcColor8),
+        ),
+        const SizedBox(width: 12),
+        // Miniaturas
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (otherImages.isNotEmpty)
+                Row(
+                  children: [
+                    for (int i = 0; i < (otherImages.length > 3 ? 3 : otherImages.length); i++)
+                      GestureDetector(
+                        onTap: () => _showImageGallery(imagenes.cast<String>(), i + 1),
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: rcColor7,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              otherImages[i],
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 1),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, size: 20, color: rcColor8),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              if (imagenes.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => _showImageGallery(imagenes.cast<String>(), 0),
+                  icon: const Icon(Icons.photo_library, size: 16, color: rcColor4),
+                  label: Text(
+                    'Ver ${imagenes.length} foto${imagenes.length > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: rcColor4,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showImageGallery(List<String> images, int initialIndex) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: PageController(initialPage: initialIndex),
+              itemCount: images.length,
+              itemBuilder: (context, index) {
+                return InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 3.0,
+                  child: Center(
+                    child: Image.network(
+                      images[index],
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.error, color: Colors.white, size: 64),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // Botón cerrar
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            // Indicador de página
+            if (images.length > 1)
+              Positioned(
+                bottom: 40,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${initialIndex + 1} / ${images.length}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

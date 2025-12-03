@@ -15,14 +15,21 @@ class VehicleService {
   }
 
   Vehicle _fromJson(Map<String, dynamic> j) => Vehicle(
-        vehicleId: j['vehicleId'] as int,
-        name: j['name'] as String,
-        plate: j['plate'] as String,
+        vehicleId: (j['vehicleId'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        plate: (j['plate'] ?? '').toString(),
+        active: (j['active'] as bool?) ?? true,
       );
 
-  Map<String, dynamic> _toJson({required String name, required String plate}) => {
+  Map<String, dynamic> _toJson({
+    required String name,
+    required String plate,
+    bool active = true,
+  }) =>
+      {
         'name': name,
         'plate': plate,
+        'active': active,
       };
 
   // GET /fleet/companies/{companyId}/vehicles
@@ -52,12 +59,13 @@ class VehicleService {
     required int companyId,
     required String name,
     required String plate,
+    bool active = true,
   }) async {
     final uri = Uri.parse(ApiConstants.companyVehicles(companyId));
     final res = await http.post(
       uri,
       headers: await _headers(),
-      body: jsonEncode(_toJson(name: name, plate: plate)),
+      body: jsonEncode(_toJson(name: name, plate: plate, active: active)),
     );
     if (res.statusCode == 200 || res.statusCode == 201) {
       return _fromJson(jsonDecode(res.body));
@@ -70,12 +78,13 @@ class VehicleService {
     required int vehicleId,
     required String name,
     required String plate,
+    bool active = true,
   }) async {
     final uri = Uri.parse(ApiConstants.vehicleById(vehicleId));
     final res = await http.put(
       uri,
       headers: await _headers(),
-      body: jsonEncode(_toJson(name: name, plate: plate)),
+      body: jsonEncode(_toJson(name: name, plate: plate, active: active)),
     );
     if (res.statusCode == 200) {
       return _fromJson(jsonDecode(res.body));

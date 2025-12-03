@@ -5,7 +5,6 @@ import '../../features/main/presentation/pages/main_page.dart' show MainPage, Us
 import '../../features/auth/domain/models/value/role_code.dart';
 import 'auth_bloc.dart';
 
-/// Widget que decide qué mostrar según el estado de autenticación
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -14,49 +13,37 @@ class AuthWrapper extends StatelessWidget {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
         if (state is AuthInitial) {
-          // Estado inicial, mostrar loading
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        if (state is AuthSignedOut) {
-          // Usuario no autenticado, mostrar flujo de autenticación
-          return const AuthFlowExample();
-        }
-
-        if (state is AuthFirebaseOnly) {
-          // Solo Firebase autenticado, mostrar flujo de autenticación
-          // (esto no debería pasar normalmente, pero por si acaso)
+        if (state is AuthSignedOut || state is AuthFirebaseOnly) {
           return const AuthFlowExample();
         }
 
         if (state is AuthSignedIn) {
-          // Usuario autenticado, determinar rol y mostrar MainPage
           final session = state.session;
-          final roles = session.roles;
-          
-          // Determinar el rol del usuario
-          // Prioridad: driver > provider > customer
-          final isDriver = roles.contains(RoleCode.driver);
-          final isProvider = roles.contains(RoleCode.provider);
+          final globalRoles = session.roles;
+          final companyRoles = session.companyRoles;
+
+          final isDriver = globalRoles.contains(RoleCode.driver) ||
+              companyRoles.contains(RoleCode.driver);
+          final isProvider = globalRoles.contains(RoleCode.provider);
+
           final userRole = isDriver
               ? UserRole.driver
-              : isProvider 
-                  ? UserRole.provider 
+              : isProvider
+                  ? UserRole.provider
                   : UserRole.customer;
-          
-          print('🏠 [AuthWrapper] Usuario autenticado - Rol: ${userRole.name}, Roles: ${roles.map((r) => r.value).join(", ")}');
-          
+
+          print(
+            '🏠 [AuthWrapper] Usuario autenticado - Rol: ${userRole.name}, Roles: ${globalRoles.map((r) => r.value).join(", ")}, CompanyRoles: ${companyRoles.map((r) => r.value).join(", ")}',
+          );
+
           return MainPage(role: userRole);
         }
 
-        // Fallback (no debería llegar aquí)
         return const AuthFlowExample();
       },
     );
   }
 }
-

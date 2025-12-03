@@ -2,12 +2,12 @@ class AppLoginResponseDto {
   final int sessionId;
   final int accountId;
   final String accessToken;
-  final int expiresIn; // segundos
-  final int? expiresAt; // timestamp absoluto (puede ser null si backend viejo)
-  final String tokenType; // "Bearer"
-  final String status; // "ACTIVE" | "REVOKED" | "EXPIRED"
-  final List<String>? roles; // ["CLIENT", "PROVIDER"] (opcional por compat)
-  final AccountLightDto? account; // snapshot ligero (opcional por compat)
+  final int expiresIn;
+  final int? expiresAt;
+  final String tokenType;
+  final String status;
+  final List<String>? roles;
+  final AccountLightDto? account;
 
   AppLoginResponseDto({
     required this.sessionId,
@@ -44,7 +44,8 @@ class AccountLightDto {
   final String email;
   final bool emailVerified;
   final int updatedAt;
-  final int? companyId; // Solo presente para PROVIDER
+  final int? companyId;
+  final List<String> companyRoles;
 
   AccountLightDto({
     required this.username,
@@ -52,6 +53,7 @@ class AccountLightDto {
     required this.emailVerified,
     required this.updatedAt,
     this.companyId,
+    required this.companyRoles,
   });
 
   factory AccountLightDto.fromJson(Map<String, dynamic> json) =>
@@ -61,6 +63,8 @@ class AccountLightDto {
         emailVerified: json['emailVerified'] as bool,
         updatedAt: json['updatedAt'] as int,
         companyId: json['companyId'] as int?,
+        companyRoles: json['companyRoles'] != null
+            ? List<String>.from(json['companyRoles'] as List)
+            : const [],
       );
 }
-

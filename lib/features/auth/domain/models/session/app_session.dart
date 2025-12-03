@@ -6,11 +6,12 @@ class AppSession {
   final int sessionId;
   final int accountId;
   final String accessToken;
-  final int expiresAt; // timestamp en milisegundos
+  final int expiresAt;
   final TokenType tokenType;
   final SessionStatus status;
   final List<RoleCode> roles;
-  final int? companyId; // Solo presente para usuarios PROVIDER
+  final int? companyId;
+  final List<RoleCode> companyRoles;
 
   AppSession({
     required this.sessionId,
@@ -21,6 +22,6 @@ class AppSession {
     required this.status,
     required this.roles,
     this.companyId,
+    this.companyRoles = const [],
   });
 }
-

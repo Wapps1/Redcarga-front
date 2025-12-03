@@ -1,9 +1,9 @@
-// lib/features/fleet/data/services/driver_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
 import 'package:red_carga/costants/api_constants.dart';
 import 'package:red_carga/core/session/session_store.dart';
-import '../domain/driver.dart';
+import 'package:red_carga/features/fleet/domain/driver.dart';
 
 class DriverService {
   final SessionStore _sessionStore;
@@ -14,109 +14,87 @@ class DriverService {
     if (session == null) throw Exception('No hay sesión');
 
     final uri = Uri.parse(ApiConstants.companyDrivers(companyId));
+
+    print('🚚 [DriverService] GET drivers - $uri');
     final res = await http.get(uri, headers: {
       'Accept': 'application/json',
-      'Authorization': 'Bearer ${session.accessToken}',
+      'Authorization': '${session.tokenType.value} ${session.accessToken}',
     });
+
+    print('📥 [DriverService] GET status: ${res.statusCode}');
+    print('📥 [DriverService] GET body: ${res.body}');
 
     if (res.statusCode == 200) {
       final list = (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
-      return list.map((j) => Driver.fromJson(j)).toList();
+      return list.map(Driver.fromJson).toList();
     }
+
     throw Exception('List drivers failed: ${res.statusCode} ${res.body}');
   }
 
-  Future<Driver> getDriver(int driverId) async {
+  Future<void> createDriver({
+    required int companyId,
+    required int accountId,
+    required String licenseNumber,
+    bool active = true,
+    String? plateImageUrl,
+  }) async {
     final session = await _sessionStore.getAppSession();
     if (session == null) throw Exception('No hay sesión');
 
-    final uri = Uri.parse(ApiConstants.driverById(driverId));
-    final res = await http.get(uri, headers: {
-      'Accept': 'application/json',
-      'Authorization': 'Bearer ${session.accessToken}',
-    });
+    final uri = Uri.parse(ApiConstants.companyDrivers(companyId));
 
-    if (res.statusCode == 200) {
-      return Driver.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
-    }
-    throw Exception('Get driver failed: ${res.statusCode} ${res.body}');
-  }
-
-  Future<Driver> createDriver({
-    required int companyId,
-    required String firstName,
-    required String lastName,
-    required String email,
-    required String phone,
-    required String licenseNumber,
-    bool active = true,
-  }) async {
-    final session = await _sessionStore.getAppSession();
-    if (session == null) {
-      print('❌ [DriverService] No hay sesión disponible');
-      throw Exception('No hay sesión');
-    }
-
-    // Verificar si el token está expirado
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now >= session.expiresAt) {
-      print('❌ [DriverService] Token expirado. ExpiresAt: ${session.expiresAt}, Now: $now');
-      throw Exception('Sesión expirada. Por favor, inicia sesión nuevamente');
-    }
-
-    final payload = {
-      'firstName': firstName.trim(),
-      'lastName': lastName.trim(),
-      'email': email.trim(),
-      'phone': phone.replaceAll(RegExp(r'\D'), ''),
-      'licenseNumber': licenseNumber.trim(),
+    final payload = <String, dynamic>{
+      'accountId': accountId,
+      'licenseNumber': licenseNumber,
       'active': active,
+      if (plateImageUrl != null && plateImageUrl.isNotEmpty)
+        'licenseImageUrl': plateImageUrl,
     };
 
-    final uri = Uri.parse(ApiConstants.companyDrivers(companyId));
-    
-    print('🚀 [DriverService] Creando conductor - POST $uri');
-    print('📤 [DriverService] CompanyId: $companyId');
+    print('🚚 [DriverService] POST create driver - $uri');
     print('📤 [DriverService] Payload: $payload');
-    print('🔑 [DriverService] Token: ${session.accessToken.substring(0, 20)}...');
 
     final res = await http.post(
       uri,
       headers: {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': 'Bearer ${session.accessToken}',
+        'Content-Type': 'application/json',
+        'Authorization': '${session.tokenType.value} ${session.accessToken}',
       },
       body: jsonEncode(payload),
     );
 
-    print('📥 [DriverService] Response status: ${res.statusCode}');
-    print('📥 [DriverService] Response body: ${res.body}');
+    print('📥 [DriverService] POST status: ${res.statusCode}');
+    print('📥 [DriverService] POST body: ${res.body}');
 
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      return Driver.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return;
     }
-    
-    // Mejor manejo de errores
-    String errorMessage = 'Error al crear conductor';
-    try {
-      final errorBody = jsonDecode(res.body);
-      if (errorBody is Map && errorBody.containsKey('message')) {
-        errorMessage = errorBody['message'];
-      } else if (errorBody is Map && errorBody.containsKey('error')) {
-        errorMessage = errorBody['error'];
-      } else {
-        errorMessage = res.body;
+
+    if (res.statusCode == 422) {
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final code = (body['code'] ?? body['error'])?.toString();
+        final detail = (body['message'] ?? body['detail'])?.toString();
+        if (code == 'company_not_found') {
+          throw Exception('La empresa indicada no existe.');
+        }
+        throw Exception(detail ?? 'Validación rechazada por el backend.');
+      } catch (_) {
+        throw Exception('Solicitud inválida (422).');
       }
-    } catch (e) {
-      errorMessage = res.body;
     }
-    
-    if (res.statusCode == 401) {
-      throw Exception('No autorizado. Tu sesión puede haber expirado. Por favor, inicia sesión nuevamente.');
-    }
-    
-    throw Exception('Error al crear conductor (${res.statusCode}): $errorMessage');
+
+    String backendMessage = res.body;
+    try {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      backendMessage = decoded['message']?.toString() ?? backendMessage;
+    } catch (_) {}
+
+    throw Exception(
+      'Create driver failed (${res.statusCode}): $backendMessage',
+    );
   }
 
   Future<void> deleteDriver(int driverId) async {
@@ -124,13 +102,65 @@ class DriverService {
     if (session == null) throw Exception('No hay sesión');
 
     final uri = Uri.parse(ApiConstants.driverById(driverId));
-    final res = await http.delete(uri, headers: {
-      'Accept': 'application/json',
-      'Authorization': 'Bearer ${session.accessToken}',
-    });
+    final res = await http.delete(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': '${session.tokenType.value} ${session.accessToken}',
+      },
+    );
 
-    if (res.statusCode != 200 && res.statusCode != 204) {
-      throw Exception('Delete driver failed: ${res.statusCode} ${res.body}');
+    if (res.statusCode == 200 || res.statusCode == 204) return;
+
+    String backendMessage = res.body;
+    try {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      backendMessage = decoded['message']?.toString() ?? backendMessage;
+    } catch (_) {}
+
+    throw Exception(
+      'Delete driver failed (${res.statusCode}): $backendMessage',
+    );
+  }
+
+  Future<void> registerOperator({
+    required int companyId,
+    required int accountId,
+    int roleId = 2,
+  }) async {
+    final session = await _sessionStore.getAppSession();
+    if (session == null) throw Exception('No hay sesión');
+
+    final uri = Uri.parse(ApiConstants.providerCompanyOperators(companyId));
+    final payload = {
+      'operatorId': accountId,
+      'roleId': roleId,
+    };
+
+    final res = await http.post(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': '${session.tokenType.value} ${session.accessToken}',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (res.statusCode == 200 ||
+        res.statusCode == 201 ||
+        res.statusCode == 409) {
+      return;
     }
+
+    String backendMessage = res.body;
+    try {
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      backendMessage = decoded['message']?.toString() ?? backendMessage;
+    } catch (_) {}
+
+    throw Exception(
+      'Register operator failed (${res.statusCode}): $backendMessage',
+    );
   }
 }

@@ -9,6 +9,7 @@ import 'package:red_carga/features/drivers/presentation/pages/driver_map_page.da
 import 'package:red_carga/features/drivers/presentation/pages/driver_profile_page.dart';
 import 'package:red_carga/features/profile/presentation/pages/profile_page.dart';
 import 'package:red_carga/features/requests/presentation/pages/requests_page.dart';
+import 'package:red_carga/features/planning/presentation/pages/routes_page.dart';
 import '../widgets/customer_bottom_bar.dart';
 import '../widgets/provider_bottom_bar.dart';
 import '../widgets/driver_bottom_bar.dart';
@@ -36,7 +37,7 @@ class _MainPageState extends State<MainPage> {
 
   late final List<Widget> _providerPages = <Widget>[
     HomePage(role: widget.role),
-    const _Stub('Rutas'),
+    const RoutesPage(),
     RequestsPage(role: widget.role),
     ChatsPage(userRole: widget.role),
     const ProviderProfilePage(),

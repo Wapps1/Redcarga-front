@@ -7,6 +7,8 @@ import 'package:red_carga/features/deals/data/models/company_dto.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_cotizacion_page.dart';
 import 'package:red_carga/features/deals/presentation/pages/deals_chat.dart';
 import 'package:red_carga/features/main/presentation/pages/main_page.dart';
+import 'package:red_carga/core/session/session_store.dart';
+import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
 import 'package:intl/intl.dart';
 
 class ViewCotizacionPage extends StatefulWidget {
@@ -30,6 +32,28 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
   // Estados de carga
   bool _isLoading = true;
   String? _errorMessage;
+  
+  // Helper para obtener el rol del usuario
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a customer si no se puede obtener
+    return UserRole.customer;
+  }
   
   // Datos del API
   QuoteDetailDto? _quoteDetail;
@@ -538,19 +562,24 @@ class _ViewCotizacionPageState extends State<ViewCotizacionPage> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => ChatPage(
-                                    quoteId: widget.quoteId,
-                                    nombre: _quoteDetail != null 
-                                        ? 'Empresa ${_quoteDetail!.companyId}' 
-                                        : 'Chat',
-                                    userRole: UserRole.customer, // TODO: Obtener del contexto
-                                    acceptedDeal: _quoteDetail?.stateCode == 'ACEPTADO',
+                            onTap: () async {
+                              // Obtener el rol del usuario desde la sesión
+                              final userRole = await _getUserRole();
+                              
+                              if (mounted) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => ChatPage(
+                                      quoteId: widget.quoteId,
+                                      nombre: _quoteDetail != null 
+                                          ? 'Empresa ${_quoteDetail!.companyId}' 
+                                          : 'Chat',
+                                      userRole: userRole,
+                                      acceptedDeal: _quoteDetail?.stateCode == 'ACEPTADA',
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              }
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(

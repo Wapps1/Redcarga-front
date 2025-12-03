@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class ShipmentSentChatCard extends StatelessWidget {
   final bool isMyShipment; // true si el usuario actual envió la carga
+  final String? systemSubtypeCode; // SHIPMENT_SENT o SHIPMENT_RECEIVED
+  final DateTime? timestamp; // Timestamp del mensaje
+  final VoidCallback? onConfirmarRecepcion; // Callback para confirmar recepción del envío
 
   const ShipmentSentChatCard({
     super.key,
     this.isMyShipment = false,
+    this.systemSubtypeCode,
+    this.timestamp,
+    this.onConfirmarRecepcion,
   });
 
   @override
@@ -38,11 +45,9 @@ class ShipmentSentChatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Texto según si es mi envío o de la otra persona
+          // Texto según el estado del envío
           Text(
-            isMyShipment
-                ? 'Has enviado la carga'
-                : 'Se ha enviado la carga',
+            _getShipmentText(),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: rcWhite,
                   fontWeight: FontWeight.bold,
@@ -76,7 +81,103 @@ class ShipmentSentChatCard extends StatelessWidget {
               ),
             ),
           ),
+          // Botón para confirmar recepción si es SHIPMENT_SENT y no es mi envío
+          if (systemSubtypeCode == 'SHIPMENT_SENT' && !isMyShipment && onConfirmarRecepcion != null) ...[
+            const SizedBox(height: 20),
+            _buildActionButton(
+              context,
+              'Confirmar recepción',
+              rcColor1,
+              colorScheme.primary,
+              onConfirmarRecepcion,
+            ),
+          ],
+          // Mostrar hora de envío
+          if (timestamp != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _formatMessageTime(timestamp!),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: rcWhite.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  String _formatMessageTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    
+    if (messageDate == today) {
+      // Si es hoy, mostrar solo la hora
+      return DateFormat('HH:mm').format(timestamp);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      // Si es ayer
+      return 'Ayer ${DateFormat('HH:mm').format(timestamp)}';
+    } else {
+      // Si es otro día, mostrar fecha y hora
+      return DateFormat('dd/MM HH:mm').format(timestamp);
+    }
+  }
+
+  String _getShipmentText() {
+    if (systemSubtypeCode == 'SHIPMENT_RECEIVED') {
+      return 'El envío ha sido recibido';
+    } else if (systemSubtypeCode == 'SHIPMENT_SENT') {
+      if (isMyShipment) {
+        return 'Has enviado la carga';
+      } else {
+        return 'Se ha enviado la carga';
+      }
+    } else {
+      // Fallback
+      return isMyShipment
+          ? 'Has enviado la carga'
+          : 'Se ha enviado la carga';
+    }
+  }
+
+  Widget _buildActionButton(
+    BuildContext context,
+    String label,
+    Color backgroundColor,
+    Color textColor,
+    VoidCallback? onTap,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: textColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+        ),
       ),
     );
   }

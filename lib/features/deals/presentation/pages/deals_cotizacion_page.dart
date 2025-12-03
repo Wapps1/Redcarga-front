@@ -10,6 +10,8 @@ import 'package:red_carga/features/deals/data/models/request_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
 import 'package:red_carga/features/deals/data/models/company_dto.dart';
+import 'package:red_carga/core/session/session_store.dart';
+import 'package:red_carga/features/auth/domain/models/value/role_code.dart';
 import 'package:intl/intl.dart';
 
 class CotizacionPage extends StatefulWidget {
@@ -41,6 +43,28 @@ class _CotizacionPageState extends State<CotizacionPage>
   
   // Estado del selector desplegable
   bool _isRequestDropdownOpen = false;
+  
+  // Helper para obtener el rol del usuario
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a customer si no se puede obtener
+    return UserRole.customer;
+  }
 
   @override
   void initState() {
@@ -389,28 +413,28 @@ class _CotizacionPageState extends State<CotizacionPage>
               });
             },
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
                 Expanded(
                   child: Text(
                     _selectedRequest?.requestName ?? 'Selecciona una solicitud',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: rcColor6,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: rcColor6,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                  ),
                 ),
-                Icon(
+              ),
+              Icon(
                   _isRequestDropdownOpen 
                       ? Icons.keyboard_arrow_up 
                       : Icons.keyboard_arrow_down,
-                  color: rcColor8,
-                ),
-              ],
-            ),
+                color: rcColor8,
+              ),
+            ],
+          ),
           ),
           if (_isRequestDropdownOpen && _requests.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -452,11 +476,11 @@ class _CotizacionPageState extends State<CotizacionPage>
             ),
           ],
           if (_selectedRequest != null) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
             _buildSolicitudRow('Día:', _formatDate(_selectedRequest!.createdAt)),
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
             _buildSolicitudRow('Origen:', _selectedRequest!.origin.fullAddress),
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
             _buildSolicitudRow('Destino:', _selectedRequest!.destination.fullAddress),
           ] else if (_isLoadingRequests) ...[
             const SizedBox(height: 12),
@@ -603,23 +627,28 @@ class _CotizacionPageState extends State<CotizacionPage>
               _formatPrice(quote.totalAmount, quote.currencyCode),
             );
           } : null,
-          onChat: isOtherTabs ? () {
+          onChat: isOtherTabs ? () async {
             final detail = _quoteDetails[quote.quoteId];
             final company = _companies[quote.companyId];
             final empresaNombre = company?.tradeName ?? company?.legalName ?? 'Empresa ${quote.companyId}';
             final requestName = _selectedRequest?.requestName ?? 'Solicitud';
             final titulo = '$empresaNombre - $requestName';
             
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => ChatPage(
-                  quoteId: quote.quoteId,
-                  nombre: titulo,
-                  userRole: UserRole.customer, // TODO: Obtener del contexto o sesión
-                  acceptedDeal: detail?.stateCode == 'ACEPTADA',
+            // Obtener el rol del usuario desde la sesión
+            final userRole = await _getUserRole();
+            
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => ChatPage(
+                    quoteId: quote.quoteId,
+                    nombre: titulo,
+                    userRole: userRole,
+                    acceptedDeal: detail?.stateCode == 'ACEPTADA',
+                  ),
                 ),
-              ),
-            );
+              );
+            }
           } : null,
         );
       }).toList(),

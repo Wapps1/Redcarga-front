@@ -7,6 +7,7 @@ import 'package:red_carga/features/deals/data/di/deals_repositories.dart';
 import 'package:red_carga/features/deals/data/models/quote_detail_dto.dart';
 import 'package:red_carga/features/deals/data/models/quote_change_request_dto.dart';
 import 'package:red_carga/features/deals/data/models/company_dto.dart';
+import 'package:red_carga/features/deals/data/models/change_dto.dart';
 import 'package:intl/intl.dart';
 
 class EditCotizacionPage extends StatefulWidget {
@@ -15,6 +16,7 @@ class EditCotizacionPage extends StatefulWidget {
   final bool editingMode;
   final bool isCustomer;
   final Function(String motivo)? onEdicionCompletada;
+  final ChangeDto? changePreview; // Para mostrar cambios propuestos
 
   const EditCotizacionPage({
     super.key,
@@ -23,6 +25,7 @@ class EditCotizacionPage extends StatefulWidget {
     this.editingMode = false,
     this.isCustomer = false,
     this.onEdicionCompletada,
+    this.changePreview,
   });
 
   @override
@@ -129,7 +132,7 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
         _origen = requestDetail.origin.fullAddress;
         _destino = requestDetail.destination.fullAddress;
         _pagoContraentrega = requestDetail.paymentOnDelivery;
-        
+    
         // Mapear datos de la empresa
         if (company != null) {
           _razonSocial = company.legalName;
@@ -137,8 +140,17 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
           _correo = company.email;
         }
         
-        // Mapear precio
-        _precioPropuesto = quoteDetail.totalAmount.toStringAsFixed(2);
+        // Mapear precio (aplicar cambios si hay preview)
+        double precioBase = quoteDetail.totalAmount;
+        if (widget.changePreview != null) {
+          // Aplicar cambios del preview
+          for (final changeItem in widget.changePreview!.items) {
+            if (changeItem.fieldCode == 'PRICE_TOTAL' && changeItem.newValue != null) {
+              precioBase = double.tryParse(changeItem.newValue!) ?? precioBase;
+            }
+          }
+        }
+        _precioPropuesto = precioBase.toStringAsFixed(2);
         _precioController.text = _precioPropuesto;
         
         // Mapear artículos y guardar mapeo de quoteItemId
@@ -147,6 +159,20 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
         final quoteItemsMap = <int, QuoteItemDto>{};
         for (final quoteItem in quoteDetail.items) {
           quoteItemsMap[quoteItem.requestItemId] = quoteItem;
+        }
+        
+        // Crear map de cambios por quoteItemId o requestItemId
+        final cambiosPorQuoteItemId = <int, ChangeItemDto>{};
+        final cambiosPorRequestItemId = <int, ChangeItemDto>{};
+        if (widget.changePreview != null) {
+          for (final changeItem in widget.changePreview!.items) {
+            if (changeItem.targetQuoteItemId != null) {
+              cambiosPorQuoteItemId[changeItem.targetQuoteItemId!] = changeItem;
+            }
+            if (changeItem.targetRequestItemId != null) {
+              cambiosPorRequestItemId[changeItem.targetRequestItemId!] = changeItem;
+            }
+          }
         }
         
         _articulos = requestDetail.items.map((item) {
@@ -158,6 +184,20 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
             _quoteItemIdMap[item.itemId] = quoteItem.quoteItemId;
           }
           
+          // Aplicar cambios si existen
+          int cantidad = quoteItem?.qty ?? item.quantity;
+          if (quoteItem != null) {
+            final cambio = cambiosPorQuoteItemId[quoteItem.quoteItemId];
+            if (cambio != null && cambio.fieldCode == 'QTY' && cambio.newValue != null) {
+              cantidad = int.tryParse(cambio.newValue!) ?? cantidad;
+            }
+          } else {
+            final cambio = cambiosPorRequestItemId[item.itemId];
+            if (cambio != null && cambio.fieldCode == 'ITEM_ADD' && cambio.newValue != null) {
+              cantidad = int.tryParse(cambio.newValue!) ?? cantidad;
+            }
+          }
+          
           return ArticuloData(
             id: item.itemId.toString(),
             titulo: item.itemName,
@@ -167,16 +207,34 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
             ancho: item.widthCm,
             largo: item.lengthCm,
             peso: item.weightKg,
-            // Usar la cantidad de la cotización si existe, sino la de la solicitud
-            cantidad: quoteItem?.qty ?? item.quantity,
+            cantidad: cantidad,
           );
         }).toList();
+        
+        // Filtrar artículos eliminados si hay cambios
+        if (widget.changePreview != null) {
+          final itemsEliminados = <int>{};
+          for (final changeItem in widget.changePreview!.items) {
+            if (changeItem.fieldCode == 'ITEM_REMOVE' && changeItem.targetQuoteItemId != null) {
+              // Buscar el requestItemId correspondiente
+              for (final entry in _quoteItemIdMap.entries) {
+                if (entry.value == changeItem.targetQuoteItemId) {
+                  itemsEliminados.add(entry.key);
+                  break;
+                }
+              }
+            }
+          }
+          _articulos.removeWhere((articulo) => 
+            itemsEliminados.contains(int.tryParse(articulo.id))
+          );
+        }
         
         _comentario = ''; // No hay comentario en el API por ahora
         _comentarioController.text = _comentario;
         
         _isLoading = false;
-        _guardarValoresOriginales();
+    _guardarValoresOriginales();
       });
     } catch (e) {
       setState(() {
@@ -239,21 +297,21 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     // Ejecutar verificación después de un delay para evitar sobrecargar el hilo principal
     _verificarCambiosTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted || _isReadOnly) return;
-      
-      final originalArticulos = _valoresOriginales['articulos'] as List;
-      
+
+    final originalArticulos = _valoresOriginales['articulos'] as List;
+    
       // Verificar cambios en campos básicos (rápido)
-      final hayCambiosBasicos = _cliente != _valoresOriginales['cliente'] ||
-          _dia != _valoresOriginales['dia'] ||
-          _origen != _valoresOriginales['origen'] ||
-          _destino != _valoresOriginales['destino'] ||
-          _pagoContraentrega != _valoresOriginales['pagoContraentrega'] ||
-          _razonSocial != _valoresOriginales['razonSocial'] ||
-          _ruc != _valoresOriginales['ruc'] ||
-          _correo != _valoresOriginales['correo'] ||
-          _comentario != _valoresOriginales['comentario'] ||
-          _precioPropuesto != _valoresOriginales['precioPropuesto'];
-      
+    final hayCambiosBasicos = _cliente != _valoresOriginales['cliente'] ||
+        _dia != _valoresOriginales['dia'] ||
+        _origen != _valoresOriginales['origen'] ||
+        _destino != _valoresOriginales['destino'] ||
+        _pagoContraentrega != _valoresOriginales['pagoContraentrega'] ||
+        _razonSocial != _valoresOriginales['razonSocial'] ||
+        _ruc != _valoresOriginales['ruc'] ||
+        _correo != _valoresOriginales['correo'] ||
+        _comentario != _valoresOriginales['comentario'] ||
+        _precioPropuesto != _valoresOriginales['precioPropuesto'];
+    
       // Verificación rápida de artículos (solo longitud primero)
       bool hayCambiosArticulos = false;
       if (_articulos.length != originalArticulos.length) {
@@ -289,13 +347,13 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
         }
       }
 
-      final hayCambios = hayCambiosBasicos || hayCambiosArticulos;
+    final hayCambios = hayCambiosBasicos || hayCambiosArticulos;
 
       if (hayCambios && !_editingMode && mounted) {
-        setState(() {
-          _editingMode = true;
-        });
-      }
+      setState(() {
+        _editingMode = true;
+      });
+    }
     });
   }
 
@@ -321,8 +379,8 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
   }
 
   bool get _isReadOnly {
-    // Cuando es cliente y no está en modo edición y no hay deal aceptado, es solo lectura
-    return _isCustomer && !_editingMode && !_acceptedDeal;
+    // Cuando no está en modo edición, es solo lectura
+    return !_editingMode;
   }
 
   @override
@@ -731,8 +789,111 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
   }
 
   Widget _buildActionButtons(ColorScheme colorScheme) {
+    // Si hay un preview de cambios, mostrar botones de aceptar/cerrar
+    if (widget.changePreview != null) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: colorScheme.primary),
+                backgroundColor: rcWhite,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                'Cerrar',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () async {
+                    try {
+                      await _aceptarCambio(widget.changePreview!.changeId);
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        _mostrarMensaje('Error al aceptar cambio: $e');
+                      }
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: Text(
+                        'Aceptar',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: rcWhite,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     if (!_editingMode && !_acceptedDeal) {
-      return const SizedBox.shrink();
+      // Solo mostrar botón para editar
+      return SizedBox(
+        width: double.infinity,
+        child: Container(
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _editingMode = true;
+                });
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    'Editar cotización',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: rcWhite,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
     if (_editingMode && !_acceptedDeal) {
@@ -828,39 +989,8 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     }
 
     if (!_editingMode && _acceptedDeal) {
-      // Botones: Iniciar negociación y Rechazar cotización
-      return Column(
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _quoteDetail == null ? null : () async {
-                try {
-                  await _rejectQuote();
-                } catch (e) {
-                  if (mounted) {
-                    _mostrarMensaje('Error al rechazar cotización: $e');
-                  }
-                }
-              },
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: rcError),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: Text(
-                'Rechazar cotización',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: rcError,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
+      // Solo mostrar botón para editar
+      return SizedBox(
             width: double.infinity,
             child: Container(
               decoration: BoxDecoration(
@@ -870,21 +1000,17 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: _quoteDetail == null ? null : () async {
-                    try {
-                      await _startNegotiation();
-                    } catch (e) {
-                      if (mounted) {
-                        _mostrarMensaje('Error al iniciar negociación: $e');
-                      }
-                    }
+                  onTap: () {
+                setState(() {
+                  _editingMode = true;
+                });
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Center(
                       child: Text(
-                        'Iniciar negociación',
+                    'Editar cotización',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                               color: rcWhite,
                               fontWeight: FontWeight.bold,
@@ -895,8 +1021,6 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                 ),
               ),
             ),
-          ),
-        ],
       );
     }
 
@@ -999,8 +1123,8 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
             );
             
             try {
-              // Si acceptedDeal es false, aplicar cambios al API
-              if (!_acceptedDeal && widget.quoteId != null) {
+              // Aplicar cambios al API (tanto para actualizar como para proponer)
+              if (widget.quoteId != null) {
                 await _aplicarCambios();
               }
               
@@ -1009,8 +1133,8 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
               // Cerrar el indicador de carga
               Navigator.of(context).pop(); // Cerrar loading
               
-              // Guardar el callback para ejecutarlo después
-              final callback = widget.onEdicionCompletada;
+            // Guardar el callback para ejecutarlo después
+            final callback = widget.onEdicionCompletada;
               
               if (mounted) {
                 // Guardar valores antes de cerrar
@@ -1019,14 +1143,14 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                   _guardarValoresOriginales();
                 });
                 // Mostrar mensaje antes de cerrar
-                _mostrarMensaje('Cotización actualizada');
+                _mostrarMensaje(_acceptedDeal ? 'Cotización propuesta' : 'Cotización actualizada');
                 // Cerrar la página de edición
                 Navigator.of(context).pop();
                 // Ejecutar el callback después de cerrar la página
                 if (callback != null) {
                   Future.delayed(const Duration(milliseconds: 200), () {
                     if (mounted) {
-                      callback(motivo);
+                    callback(motivo);
                     }
                   });
                 }
@@ -1035,17 +1159,45 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
               if (!mounted) return;
               // Cerrar el indicador de carga
               Navigator.of(context).pop(); // Cerrar loading
-              _mostrarMensaje('Error al actualizar cotización: $e');
+              _mostrarMensaje('Error al ${_acceptedDeal ? 'proponer' : 'actualizar'} cotización: $e');
               // No cerrar la página si hay error
             }
           },
-          onEnviarSolicitud: (motivo) {
+          onEnviarSolicitud: (motivo) async {
             // Cerrar el modal primero
             Navigator.of(dialogContext).pop();
+            
+            // Cerrar el teclado si está abierto
+            FocusScope.of(context).unfocus();
+            
+            // Esperar un frame para que el teclado se cierre
+            await Future.delayed(const Duration(milliseconds: 100));
+            
+            if (!mounted) return;
+            
+            // Mostrar indicador de carga
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (loadingContext) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+            
+            try {
+              // Aplicar cambios al API (tanto para actualizar como para proponer)
+              if (widget.quoteId != null) {
+                await _aplicarCambios();
+              }
+              
+              if (!mounted) return;
+              
+              // Cerrar el indicador de carga
+              Navigator.of(context).pop(); // Cerrar loading
+              
             // Guardar el callback para ejecutarlo después
             final callback = widget.onEdicionCompletada;
-            // Luego ejecutar callbacks y cerrar la página
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+              
               if (mounted) {
                 // Guardar valores antes de cerrar
                 setState(() {
@@ -1053,63 +1205,29 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
                   _guardarValoresOriginales();
                 });
                 // Mostrar mensaje antes de cerrar
-                _mostrarMensaje('Solicitud de cotización enviada');
+                _mostrarMensaje('Cotización propuesta');
                 // Cerrar la página de edición
                 Navigator.of(context).pop();
                 // Ejecutar el callback después de cerrar la página
                 if (callback != null) {
                   Future.delayed(const Duration(milliseconds: 200), () {
+                    if (mounted) {
                     callback(motivo);
+                    }
                   });
                 }
               }
-            });
+            } catch (e) {
+              if (!mounted) return;
+              // Cerrar el indicador de carga
+              Navigator.of(context).pop(); // Cerrar loading
+              _mostrarMensaje('Error al proponer cotización: $e');
+              // No cerrar la página si hay error
+            }
           },
         ),
       ),
     );
-  }
-
-  Future<void> _startNegotiation() async {
-    if (widget.quoteId == null) return;
-    
-    try {
-      // Obtener la versión de la cotización
-      final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId!);
-      
-      await _dealsRepository.startNegotiation(
-        widget.quoteId!,
-        ifMatch: versionDto.version.toString(),
-      );
-      
-      if (mounted) {
-        _mostrarMensaje('Negociación iniciada exitosamente');
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        _mostrarMensaje('Error al iniciar negociación: $e');
-      }
-      rethrow;
-    }
-  }
-  
-  Future<void> _rejectQuote() async {
-    if (widget.quoteId == null) return;
-    
-    try {
-      await _dealsRepository.rejectQuote(widget.quoteId!);
-      
-      if (mounted) {
-        _mostrarMensaje('Cotización rechazada exitosamente');
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        _mostrarMensaje('Error al rechazar cotización: $e');
-      }
-      rethrow;
-    }
   }
 
   Future<void> _aplicarCambios() async {
@@ -1229,6 +1347,32 @@ class _EditCotizacionPageState extends State<EditCotizacionPage> {
     }
     
     return QuoteChangeRequestDto(items: changes);
+  }
+
+  Future<void> _aceptarCambio(int changeId) async {
+    if (widget.quoteId == null) return;
+    
+    try {
+      // Obtener la versión de la cotización para el header If-Match
+      final versionDto = await _dealsRepository.getQuoteVersion(widget.quoteId!);
+      
+      // Aceptar el cambio usando el endpoint /decision
+      await _dealsRepository.decideChange(
+        widget.quoteId!,
+        changeId,
+        true, // accept = true
+        ifMatch: versionDto.version.toString(),
+      );
+      
+      if (mounted) {
+        _mostrarMensaje('Cambio aceptado exitosamente');
+      }
+    } catch (e) {
+      if (mounted) {
+        _mostrarMensaje('Error al aceptar cambio: $e');
+      }
+      rethrow;
+    }
   }
 
   void _mostrarFotosAmpliadas(List<String> fotos) {

@@ -8,6 +8,11 @@ import '../models/company_dto.dart';
 import '../models/chat_list_dto.dart';
 import '../models/chat_dto.dart';
 import '../models/quote_change_request_dto.dart';
+import '../models/change_dto.dart';
+import '../models/driver_dto.dart';
+import '../models/vehicle_dto.dart';
+import '../models/assignment_dto.dart';
+import '../models/checklist_item_dto.dart';
 import '../../../requests/data/models/image_upload_response.dart';
 
 class DealsRepository {
@@ -210,6 +215,176 @@ class DealsRepository {
       );
     } catch (e) {
       print('❌ [DealsRepository] Error applying quote changes: $e');
+      rethrow;
+    }
+  }
+
+  /// Crea una solicitud de aceptación de trato
+  Future<void> createAcceptance(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.createAcceptance(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error creating acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma una aceptación de trato
+  Future<void> confirmAcceptance(int quoteId, int acceptanceId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.confirmAcceptance(quoteId, acceptanceId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error confirming acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Rechaza una aceptación de trato
+  Future<void> rejectAcceptance(int quoteId, int acceptanceId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.rejectAcceptance(quoteId, acceptanceId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error rejecting acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los detalles de un cambio propuesto
+  Future<ChangeDto> getChange(int quoteId, int changeId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getChange(quoteId, changeId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting change: $e');
+      rethrow;
+    }
+  }
+
+  /// Acepta o rechaza un cambio propuesto
+  Future<void> decideChange(
+    int quoteId,
+    int changeId,
+    bool accept, {
+    required String ifMatch,
+  }) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.decideChange(
+        quoteId,
+        changeId,
+        accept,
+        accessToken,
+        ifMatch: ifMatch,
+      );
+    } catch (e) {
+      print('❌ [DealsRepository] Error deciding change: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los conductores de una empresa
+  Future<List<DriverDto>> getDrivers(int companyId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getDrivers(companyId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting drivers: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los vehículos de una empresa
+  Future<List<VehicleDto>> getVehicles(int companyId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getVehicles(companyId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting vehicles: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la asignación de flota y conductor para una cotización
+  Future<AssignmentDto?> getAssignment(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getAssignment(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting assignment: $e');
+      rethrow;
+    }
+  }
+
+  /// Asigna o actualiza un conductor y un vehículo a un trato
+  Future<void> assignFleetDriver(int quoteId, int driverId, int vehicleId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      
+      // Obtener la asignación actual para obtener el version
+      final currentAssignment = await _dealsService.getAssignment(quoteId, accessToken);
+      final version = currentAssignment?.version ?? 0;
+      
+      return await _dealsService.assignFleetDriver(quoteId, driverId, vehicleId, version, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error assigning fleet and driver: $e');
+      rethrow;
+    }
+  }
+
+  /// Marca el pago como realizado
+  Future<void> paymentMade(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.paymentMade(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error marking payment as made: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma el recibimiento del pago
+  Future<void> paymentConfirm(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.paymentConfirm(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error confirming payment: $e');
+      rethrow;
+    }
+  }
+
+  /// Marca el envío como enviado
+  Future<void> shipmentSent(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.shipmentSent(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error marking shipment as sent: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma el recibimiento del envío
+  Future<void> shipmentReceived(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.shipmentReceived(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error confirming shipment received: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los items del checklist para una cotización
+  Future<List<ChecklistItemDto>> getChecklistItems(int quoteId) async {
+    try {
+      final accessToken = await _getAccessToken();
+      return await _dealsService.getChecklistItems(quoteId, accessToken);
+    } catch (e) {
+      print('❌ [DealsRepository] Error getting checklist items: $e');
       rethrow;
     }
   }

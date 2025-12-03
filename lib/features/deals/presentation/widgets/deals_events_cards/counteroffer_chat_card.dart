@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:red_carga/core/theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class CounterofferChatCard extends StatelessWidget {
   final double precio;
   final bool isMyCounteroffer; // true si el usuario actual hizo la contraoferta
+  final String? statusCode; // PENDIENTE o APLICADO
+  final DateTime? timestamp; // Timestamp del mensaje
   final VoidCallback? onAceptar;
   final VoidCallback? onRechazar;
+  final VoidCallback? onVerCotizacion; // Para ver la cotización con cambios
 
   const CounterofferChatCard({
     super.key,
     required this.precio,
     this.isMyCounteroffer = false,
+    this.statusCode,
+    this.timestamp,
     this.onAceptar,
     this.onRechazar,
+    this.onVerCotizacion,
   });
 
   @override
@@ -45,9 +52,11 @@ class CounterofferChatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Texto según si es mi contraoferta o de la otra persona
+          // Texto según el estado
           Text(
-            isMyCounteroffer
+            statusCode == 'APLICADO'
+                ? 'El cambio ha sido aceptado y aplicado'
+                : isMyCounteroffer
                 ? 'Haz realizado una contraoferta'
                 : 'El cliente ha realizado una contraoferta de',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -55,7 +64,7 @@ class CounterofferChatCard extends StatelessWidget {
                 ),
             textAlign: TextAlign.center,
           ),
-          if (!isMyCounteroffer) ...[
+          if (!isMyCounteroffer && statusCode != 'APLICADO') ...[
             const SizedBox(height: 4),
             Text(
               'de',
@@ -100,8 +109,19 @@ class CounterofferChatCard extends StatelessWidget {
               ),
             ),
           ),
-          // Botones Aceptar y Rechazar (solo si no es mi contraoferta)
-          if (!isMyCounteroffer) ...[
+          // Botón Ver cotización (si está pendiente y no es mi contraoferta)
+          if (statusCode == 'PENDIENTE' && !isMyCounteroffer && onVerCotizacion != null) ...[
+            const SizedBox(height: 20),
+            _buildActionButton(
+              context,
+              'Ver cotización',
+              rcColor1,
+              colorScheme.primary,
+              onVerCotizacion,
+            ),
+          ],
+          // Botones Aceptar y Rechazar (solo si no es mi contraoferta y no hay botón de ver cotización)
+          if (!isMyCounteroffer && statusCode != 'APLICADO' && onVerCotizacion == null) ...[
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -124,9 +144,38 @@ class CounterofferChatCard extends StatelessWidget {
               ],
             ),
           ],
+          // Mostrar hora de envío
+          if (timestamp != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _formatMessageTime(timestamp!),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: rcWhite.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _formatMessageTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    
+    if (messageDate == today) {
+      // Si es hoy, mostrar solo la hora
+      return DateFormat('HH:mm').format(timestamp);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      // Si es ayer
+      return 'Ayer ${DateFormat('HH:mm').format(timestamp)}';
+    } else {
+      // Si es otro día, mostrar fecha y hora
+      return DateFormat('dd/MM HH:mm').format(timestamp);
+    }
   }
 
   Widget _buildActionButton(

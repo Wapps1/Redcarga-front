@@ -11,6 +11,11 @@ import '../models/company_dto.dart';
 import '../models/chat_list_dto.dart';
 import '../models/chat_dto.dart';
 import '../models/quote_change_request_dto.dart';
+import '../models/change_dto.dart';
+import '../models/driver_dto.dart';
+import '../models/vehicle_dto.dart';
+import '../models/assignment_dto.dart';
+import '../models/checklist_item_dto.dart';
 import '../../../requests/data/models/image_upload_response.dart';
 
 class DealsService {
@@ -696,6 +701,511 @@ class DealsService {
         return http.MediaType('image', 'bmp');
       default:
         return null;
+    }
+  }
+
+  /// Crea una solicitud de aceptación de trato
+  Future<void> createAcceptance(
+    int quoteId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/acceptances');
+    
+    print('🚀 [DealsService] POST $url');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({}),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(_parseError(response, 'Failed to create acceptance'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error creating acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma una aceptación de trato
+  Future<void> confirmAcceptance(
+    int quoteId,
+    int acceptanceId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/acceptances/$acceptanceId/confirm');
+    
+    print('🚀 [DealsService] POST $url');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_parseError(response, 'Failed to confirm acceptance'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error confirming acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Rechaza una aceptación de trato
+  Future<void> rejectAcceptance(
+    int quoteId,
+    int acceptanceId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/acceptances/$acceptanceId/reject');
+    
+    print('🚀 [DealsService] POST $url');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_parseError(response, 'Failed to reject acceptance'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error rejecting acceptance: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los detalles de un cambio propuesto
+  Future<ChangeDto> getChange(
+    int quoteId,
+    int changeId,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/{quoteId}/changes/$changeId');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        return ChangeDto.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      } else {
+        throw Exception(_parseError(response, 'Failed to get change'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting change: $e');
+      rethrow;
+    }
+  }
+
+  /// Acepta o rechaza un cambio propuesto
+  Future<void> decideChange(
+    int quoteId,
+    int changeId,
+    bool accept,
+    String accessToken, {
+    required String ifMatch,
+  }) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/changes/$changeId/decision');
+    
+    print('🚀 [DealsService] POST $url');
+    print('📤 [DealsService] Accept: $accept');
+    print('📤 [DealsService] If-Match: $ifMatch');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+          'If-Match': ifMatch,
+        },
+        body: jsonEncode({
+          'accept': accept,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_parseError(response, 'Failed to decide change'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error deciding change: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los conductores de una empresa
+  Future<List<DriverDto>> getDrivers(int companyId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/fleet/companies/$companyId/drivers');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+        return jsonList.map((json) => DriverDto.fromJson(json as Map<String, dynamic>)).toList();
+      } else {
+        throw Exception(_parseError(response, 'Failed to get drivers'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting drivers: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los vehículos de una empresa
+  Future<List<VehicleDto>> getVehicles(int companyId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/fleet/companies/$companyId/vehicles');
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+        return jsonList.map((json) => VehicleDto.fromJson(json as Map<String, dynamic>)).toList();
+      } else {
+        throw Exception(_parseError(response, 'Failed to get vehicles'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting vehicles: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene la asignación de flota y conductor para una cotización
+  Future<AssignmentDto?> getAssignment(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/assignments/by-quote/$quoteId');
+    
+    print('🚀 [DealsService] GET $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return AssignmentDto.fromJson(json);
+      } else if (response.statusCode == 404) {
+        // No hay asignación aún
+        return null;
+      } else {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to get assignment'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting assignment: $e');
+      rethrow;
+    }
+  }
+
+  /// Asigna o actualiza un conductor y un vehículo a un trato
+  Future<void> assignFleetDriver(
+    int quoteId,
+    int driverId,
+    int vehicleId,
+    int version,
+    String accessToken,
+  ) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/$quoteId/assignment');
+    
+    print('🚀 [DealsService] PUT $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    print('📤 [DealsService] Body: {"driverId": $driverId, "vehicleId": $vehicleId, "version": $version}');
+    
+    try {
+      final response = await _client.put(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'driverId': driverId,
+          'vehicleId': vehicleId,
+          'version': version,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to assign fleet and driver'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error assigning fleet and driver: $e');
+      rethrow;
+    }
+  }
+
+  /// Marca el pago como realizado
+  Future<void> paymentMade(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/$quoteId/payment/made');
+    
+    print('🚀 [DealsService] POST $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to mark payment as made'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error marking payment as made: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma el recibimiento del pago
+  Future<void> paymentConfirm(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/$quoteId/payment/confirm');
+    
+    print('🚀 [DealsService] POST $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to confirm payment'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error confirming payment: $e');
+      rethrow;
+    }
+  }
+
+  /// Marca el envío como enviado
+  Future<void> shipmentSent(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/$quoteId/shipment/sent');
+    
+    print('🚀 [DealsService] POST $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to mark shipment as sent'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error marking shipment as sent: $e');
+      rethrow;
+    }
+  }
+
+  /// Confirma el recibimiento del envío
+  Future<void> shipmentReceived(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/$quoteId/shipment/received');
+    
+    print('🚀 [DealsService] POST $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.post(
+        url,
+        headers: {
+          'accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to confirm shipment received'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error confirming shipment received: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtiene los items del checklist para una cotización
+  Future<List<ChecklistItemDto>> getChecklistItems(int quoteId, String accessToken) async {
+    final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/checklists/by-quote/$quoteId/items');
+    
+    print('🚀 [DealsService] GET $url');
+    print('🔑 [DealsService] Token recibido: ${accessToken.substring(0, 20)}... (longitud: ${accessToken.length})');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+        return jsonList.map((json) => ChecklistItemDto.fromJson(json as Map<String, dynamic>)).toList();
+      } else {
+        print('📥 [DealsService] Response body: ${response.body}');
+        throw Exception(_parseError(response, 'Failed to get checklist items'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting checklist items: $e');
+      rethrow;
     }
   }
 

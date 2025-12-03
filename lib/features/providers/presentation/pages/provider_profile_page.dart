@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:red_carga/core/session/auth_bloc.dart';
+import 'package:red_carga/core/session/session_store.dart';
 import 'package:red_carga/core/theme.dart';
+import 'package:red_carga/features/auth/data/repositories/identity_remote_repository_impl.dart';
+import 'package:red_carga/features/auth/data/services/identity_service.dart';
+import 'package:red_carga/features/auth/data/models/user_identity_dto.dart';
 import 'package:red_carga/features/providers/presentation/pages/subscriptions_page.dart';
 import 'package:red_carga/features/providers/presentation/pages/reputation_page.dart';
 import 'package:red_carga/features/providers/presentation/pages/settings_page.dart';
@@ -10,17 +14,73 @@ import 'package:red_carga/features/providers/presentation/pages/help_center_page
 import 'package:red_carga/features/providers/presentation/pages/transport_documentation_page.dart';
 import 'package:red_carga/features/providers/presentation/pages/billing_page.dart';
 
-class ProviderProfilePage extends StatelessWidget {
+class ProviderProfilePage extends StatefulWidget {
   const ProviderProfilePage({super.key});
+
+  @override
+  State<ProviderProfilePage> createState() => _ProviderProfilePageState();
+}
+
+class _ProviderProfilePageState extends State<ProviderProfilePage> {
+  UserIdentityDto? _userData;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session == null) {
+        throw Exception('No hay sesión activa');
+      }
+
+      final identityService = IdentityService();
+      final repository = IdentityRemoteRepositoryImpl(
+        identityService: identityService,
+        getFirebaseIdToken: () async {
+          // Obtener token de Firebase si es necesario
+          // Por ahora usamos el accessToken de la sesión
+          return session.accessToken;
+        },
+      );
+
+      final userData = await repository.getUserIdentity(session.accountId);
+
+      if (mounted) {
+        setState(() {
+          _userData = userData;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading user data: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error al cargar datos del usuario: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = MaterialTheme.lightScheme();
     
-    // TODO: Obtener datos reales del usuario desde la sesión
-    final userName = 'Juan Perez';
-    final ruc = '20123456789';
-    final email = 'jcontreras@hotmail.com';
+    final userName = _userData?.fullName ?? 'Usuario';
+    final ruc = _userData?.ruc ?? '';
+    final email = _userData?.phone ?? '';
 
     return Scaffold(
       body: Container(
@@ -80,7 +140,39 @@ class ProviderProfilePage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Información del usuario
-                        _buildUserInfoSection(context, userName, ruc, email),
+                        if (_isLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(40.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (_errorMessage != null)
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  _errorMessage!,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: Colors.red,
+                                      ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                ElevatedButton(
+                                  onPressed: _loadUserData,
+                                  child: const Text('Reintentar'),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          _buildUserInfoSection(context, userName, ruc, email),
                         
                         const SizedBox(height: 32),
                         

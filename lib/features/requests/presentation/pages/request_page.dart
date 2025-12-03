@@ -10,7 +10,12 @@ import '../blocs/request_inbox_bloc.dart';
 import '../blocs/request_inbox_event.dart';
 import '../blocs/request_inbox_state.dart';
 import 'details_request_page.dart';
-import 'summary_requests_page.dart';
+import '../../../deals/data/di/deals_repositories.dart';
+import '../../../deals/data/repositories/deals_repository.dart';
+import '../../../deals/data/models/quote_dto.dart';
+import '../../../deals/presentation/pages/deals_chat.dart';
+import '../../../main/presentation/pages/main_page.dart';
+import '../../../../features/auth/domain/models/value/role_code.dart';
 
 class SolicitudesPage extends StatelessWidget {
   const SolicitudesPage({super.key});
@@ -70,16 +75,28 @@ class _SolicitudesPageState extends State<_SolicitudesView>
   int _selectedTab = 0;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  
+  // Repositorio de deals
+  late DealsRepository _dealsRepository;
+  
+  // Estado para quotes aceptadas
+  Map<int, int> _requestIdToQuoteId = {}; // Mapeo requestId -> quoteId
+  bool _isLoadingAcceptedQuotes = false;
 
   @override
   void initState() {
     super.initState();
+    _dealsRepository = DealsRepositories.createDealsRepository();
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging || _tabController.index != _selectedTab) {
         setState(() {
           _selectedTab = _tabController.index;
         });
+        // Cargar quotes aceptadas cuando se cambia al tab de aceptadas
+        if (_tabController.index == 1) {
+          _loadAcceptedQuotes();
+        }
       }
     });
     _searchController.addListener(() {
@@ -87,6 +104,88 @@ class _SolicitudesPageState extends State<_SolicitudesView>
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
+  }
+  
+  Future<void> _loadAcceptedQuotes() async {
+    if (_isLoadingAcceptedQuotes) return;
+    
+    setState(() {
+      _isLoadingAcceptedQuotes = true;
+    });
+    
+    try {
+      // Cargar quotes con state "ACEPTADA" y "TRATO"
+      final quotesAceptadas = await _dealsRepository.getQuotesGeneral(
+        widget.companyId,
+        'ACEPTADA',
+      );
+      final quotesTrato = await _dealsRepository.getQuotesGeneral(
+        widget.companyId,
+        'TRATO',
+      );
+      
+      // Combinar ambas listas
+      final allQuotes = [...quotesAceptadas, ...quotesTrato];
+      
+      // Crear mapeo requestId -> quoteId
+      // Si hay múltiples quotes para el mismo requestId, usar la más reciente
+      final requestIdToQuoteIdMap = <int, int>{};
+      final requestIdToQuoteMap = <int, QuoteDto>{};
+      
+      for (var quote in allQuotes) {
+        if (!requestIdToQuoteMap.containsKey(quote.requestId)) {
+          requestIdToQuoteMap[quote.requestId] = quote;
+        } else {
+          // Comparar fechas y usar la más reciente
+          final existingQuote = requestIdToQuoteMap[quote.requestId]!;
+          final existingDate = DateTime.parse(existingQuote.createdAt);
+          final currentDate = DateTime.parse(quote.createdAt);
+          if (currentDate.isAfter(existingDate)) {
+            requestIdToQuoteMap[quote.requestId] = quote;
+          }
+        }
+      }
+      
+      // Crear el mapeo final requestId -> quoteId
+      requestIdToQuoteMap.forEach((requestId, quote) {
+        requestIdToQuoteIdMap[requestId] = quote.quoteId;
+      });
+      
+      if (mounted) {
+        setState(() {
+          _requestIdToQuoteId = requestIdToQuoteIdMap;
+          _isLoadingAcceptedQuotes = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading accepted quotes: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingAcceptedQuotes = false;
+        });
+      }
+    }
+  }
+  
+  Future<UserRole> _getUserRole() async {
+    try {
+      final sessionStore = SessionStore();
+      final session = await sessionStore.getAppSession();
+      if (session != null && session.roles.isNotEmpty) {
+        // Prioridad: driver > provider > customer
+        if (session.roles.contains(RoleCode.driver)) {
+          return UserRole.driver;
+        } else if (session.roles.contains(RoleCode.provider)) {
+          return UserRole.provider;
+        } else {
+          return UserRole.customer;
+        }
+      }
+    } catch (e) {
+      print('❌ Error getting user role: $e');
+    }
+    // Fallback a provider ya que estamos en la vista de solicitudes del proveedor
+    return UserRole.provider;
   }
 
   Future<void> _refresh() async {
@@ -290,9 +389,15 @@ class _SolicitudesPageState extends State<_SolicitudesView>
 
   Widget _buildSolicitudesList(List<RequestInboxItem> allRequests) {
     // Filtrar por tab (Todas o Aceptadas)
-    List<RequestInboxItem> filteredRequests = _selectedTab == 0
-        ? allRequests
-        : allRequests.where((r) => r.isAccepted).toList();
+    List<RequestInboxItem> filteredRequests;
+    if (_selectedTab == 0) {
+      // Tab "Todas": mostrar todas las requests
+      filteredRequests = allRequests;
+    } else {
+      // Tab "Aceptadas": mostrar solo requests cuyo requestId está en las quotes aceptadas
+      final acceptedRequestIds = _requestIdToQuoteId.keys.toSet();
+      filteredRequests = allRequests.where((r) => acceptedRequestIds.contains(r.requestId)).toList();
+    }
 
     // Filtrar por búsqueda
     if (_searchQuery.isNotEmpty) {
@@ -330,7 +435,6 @@ class _SolicitudesPageState extends State<_SolicitudesView>
   }
 
   Widget _buildSolicitudCard(RequestInboxItem solicitud) {
-    final isAceptada = solicitud.isAccepted;
     final isAceptadasTab = _selectedTab == 1;
 
     return Container(
@@ -416,9 +520,9 @@ class _SolicitudesPageState extends State<_SolicitudesView>
           const SizedBox(height: 8),
           // Botones
           _buildDetallesButton(solicitud),
-          if (isAceptadasTab && isAceptada) ...[
+          if (isAceptadasTab && _requestIdToQuoteId.containsKey(solicitud.requestId)) ...[
             const SizedBox(height: 8),
-            _buildIrAlChatButton(),
+            _buildIrAlChatButton(solicitud),
           ],
         ],
       ),
@@ -473,12 +577,15 @@ class _SolicitudesPageState extends State<_SolicitudesView>
             'routeTypeId': solicitud.routeTypeId,
           };
           
-          if (isAceptada && _selectedTab == 1) {
-            // Si está en la pestaña "Aceptadas", mostrar resumen (solo lectura)
+          if (_selectedTab == 1) {
+            // Si está en la pestaña "Aceptadas", mostrar detalles con botones de realizar/rechazar cotización
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ResumenSolicitudPage(solicitud: solicitudMap),
+                builder: (context) => DetallesSolicitudPage(
+                  solicitud: solicitudMap,
+                  fromAcceptedTab: true,
+                ),
               ),
             );
           } else {
@@ -486,7 +593,10 @@ class _SolicitudesPageState extends State<_SolicitudesView>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => DetallesSolicitudPage(solicitud: solicitudMap),
+                builder: (context) => DetallesSolicitudPage(
+                  solicitud: solicitudMap,
+                  fromAcceptedTab: false,
+                ),
               ),
             );
           }
@@ -511,7 +621,7 @@ class _SolicitudesPageState extends State<_SolicitudesView>
     );
   }
 
-  Widget _buildIrAlChatButton() {
+  Widget _buildIrAlChatButton(RequestInboxItem solicitud) {
     return SizedBox(
       width: double.infinity,
       child: Container(
@@ -526,8 +636,38 @@ class _SolicitudesPageState extends State<_SolicitudesView>
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () {
+            onTap: () async {
+              // Obtener el quoteId correspondiente al requestId
+              final quoteId = _requestIdToQuoteId[solicitud.requestId];
+              if (quoteId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No se encontró la cotización para esta solicitud'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              // Obtener el rol del usuario
+              final userRole = await _getUserRole();
+              
               // Navegar al chat
+              if (mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatPage(
+                      quoteId: quoteId,
+                      nombre: solicitud.requesterName,
+                      userRole: userRole,
+                      acceptedDeal: true,
+                    ),
+                  ),
+                );
+              }
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(

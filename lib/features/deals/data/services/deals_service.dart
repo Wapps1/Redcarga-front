@@ -110,6 +110,46 @@ class DealsService {
     }
   }
 
+  /// Obtiene las cotizaciones generales por company_id y state
+  Future<List<QuoteDto>> getQuotesGeneral(
+    int companyId,
+    String state,
+    String accessToken,
+  ) async {
+    final url = Uri.parse(ApiConstants.getQuotesGeneral(companyId, state));
+    
+    print('🚀 [DealsService] GET $url');
+    
+    try {
+      final response = await _client.get(
+        url,
+        headers: {
+          'accept': '*/*',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout: El backend no respondió en 10 segundos');
+        },
+      );
+      
+      print('📥 [DealsService] Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = jsonDecode(response.body) as List<dynamic>;
+        return jsonList
+            .map((json) => QuoteDto.fromJson(json as Map<String, dynamic>))
+            .toList();
+      } else {
+        throw Exception(_parseError(response, 'Failed to get quotes general'));
+      }
+    } catch (e) {
+      print('❌ [DealsService] Error getting quotes general: $e');
+      rethrow;
+    }
+  }
+
   /// Obtiene los detalles de una cotización específica
   Future<QuoteDetailDto> getQuoteDetail(
     int quoteId,

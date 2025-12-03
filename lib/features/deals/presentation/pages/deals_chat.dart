@@ -200,7 +200,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     // Cargar el estado de la cotización y los mensajes del chat
     _loadQuoteState();
     _loadChatMessages();
-    _loadAssignment();
+    // Solo cargar asignación si es provider
+    if (widget.userRole != UserRole.customer) {
+      _loadAssignment();
+    }
     _loadChecklist();
     _loadGuides();
   }
@@ -1692,7 +1695,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                   ),
                   child: const Center(
                     child: CircularProgressIndicator(),
-                  ),
+                        ),
                 )
               else
                 Container(
@@ -1702,7 +1705,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                       width: 1,
                     ),
                     borderRadius: BorderRadius.circular(12),
-                  ),
+        ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1723,7 +1726,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                       color: rcColor6,
                                       fontWeight: FontWeight.w600,
                                     ),
-                              ),
+              ),
                               const Spacer(),
                               // Contador de completados
                               Text(
@@ -1760,7 +1763,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                 .toList(),
                           ),
                         ),
-                      ],
+                ],
                     ],
                   ),
               ),
@@ -1818,8 +1821,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                       'Conductor: ${details['driver']}',
                                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                             color: rcColor6,
-                                          ),
-                                    ),
+                          ),
+                        ),
                                   ],
                                 ],
                       );
@@ -1849,7 +1852,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 'Documentos',
                 [
                   _buildActionButton(
-                    'Generar guías de remisión',
+                    isCustomer ? 'Generar guía de remisión' : 'Generar guía de transportista',
                     colorScheme.primary,
                     colorScheme,
                     onTap: () => _generarYSubirGuias(),
@@ -2109,7 +2112,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           Container(
             width: 18,
             height: 18,
-            decoration: BoxDecoration(
+      decoration: BoxDecoration(
               color: item.isCompleted ? colorScheme.primary.withOpacity(0.3) : Colors.transparent,
               borderRadius: BorderRadius.circular(4),
               border: Border.all(
@@ -2140,8 +2143,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                     fontSize: 13,
                   ),
           ),
-        ),
-      ],
+          ),
+        ],
       ),
     );
   }
@@ -2509,6 +2512,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
   
   Future<Map<String, String?>> _getAssignmentDetails() async {
+    // Solo obtener detalles si es provider
+    if (widget.userRole == UserRole.customer) {
+      return {};
+    }
+    
     if (_currentAssignment == null) {
       return {};
     }
@@ -3035,20 +3043,22 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       }
     }
     
-    // Obtener datos de transporte si existe asignación
+    // Obtener datos de transporte si existe asignación (solo si es provider)
     AssignmentDto? assignment;
     DriverDto? driver;
     VehicleDto? vehicle;
-    try {
-      assignment = await _dealsRepository.getAssignment(widget.quoteId);
-      if (assignment != null) {
-        final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
-        final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
-        driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
-        vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
+    if (!isCustomer) {
+      try {
+        assignment = await _dealsRepository.getAssignment(widget.quoteId);
+        if (assignment != null) {
+          final drivers = await _dealsRepository.getDrivers(quoteDetail.companyId);
+          final vehicles = await _dealsRepository.getVehicles(quoteDetail.companyId);
+          driver = drivers.firstWhere((d) => d.driverId == assignment!.driverId, orElse: () => drivers.first);
+          vehicle = vehicles.firstWhere((v) => v.vehicleId == assignment!.vehicleId, orElse: () => vehicles.first);
+        }
+      } catch (e) {
+        print('⚠️ No se pudo obtener datos de transporte: $e');
       }
-    } catch (e) {
-      print('⚠️ No se pudo obtener datos de transporte: $e');
     }
 
     // Generar PDF

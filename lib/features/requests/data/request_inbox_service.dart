@@ -9,11 +9,11 @@ class RequestInboxService {
   final SessionStore _sessionStore;
   RequestInboxService(this._sessionStore);
 
-  Future<List<RequestInboxItem>> getRequestInbox({required int companyId}) async {
+  Future<List<RequestInboxItem>> getRequestInbox({required int companyId, String? status}) async {
     final session = await _sessionStore.getAppSession();
     if (session == null) throw Exception('No hay sesión');
 
-    final uri = Uri.parse(ApiConstants.requestInbox(companyId));
+    final uri = Uri.parse(ApiConstants.requestInbox(companyId, status: status));
     
     print('🚀 [RequestInboxService] Obteniendo solicitudes - GET $uri');
     

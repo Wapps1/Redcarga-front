@@ -55,7 +55,7 @@ class SolicitudesPage extends StatelessWidget {
     return BlocProvider(
       create: (_) => RequestInboxBloc(
         service: RequestInboxService(SessionStore()),
-      )..add(RequestInboxLoad(sessionCompanyId)),
+      )..add(RequestInboxLoad(sessionCompanyId, status: 'OPEN')),
       child: _SolicitudesView(companyId: sessionCompanyId),
     );
   }
@@ -93,6 +93,9 @@ class _SolicitudesPageState extends State<_SolicitudesView>
         setState(() {
           _selectedTab = _tabController.index;
         });
+        // Recargar solicitudes con el status apropiado según el tab
+        final status = _tabController.index == 0 ? 'OPEN' : null;
+        context.read<RequestInboxBloc>().add(RequestInboxLoad(widget.companyId, status: status));
         // Cargar quotes aceptadas cuando se cambia al tab de aceptadas
         if (_tabController.index == 1) {
           _loadAcceptedQuotes();
@@ -190,7 +193,9 @@ class _SolicitudesPageState extends State<_SolicitudesView>
 
   Future<void> _refresh() async {
     if (mounted) {
-      context.read<RequestInboxBloc>().add(RequestInboxRefresh(widget.companyId));
+      // En la pestaña "Todas" usar status OPEN, en "Aceptadas" no usar filtro de status
+      final status = _selectedTab == 0 ? 'OPEN' : null;
+      context.read<RequestInboxBloc>().add(RequestInboxRefresh(widget.companyId, status: status));
     }
   }
 

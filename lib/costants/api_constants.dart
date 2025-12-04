@@ -82,5 +82,11 @@ class ApiConstants {
   // --------------------------
   // Planning - Request Inbox endpoints
   // --------------------------
-  static String requestInbox(int companyId) => '$baseUrl/planning/companies/$companyId/request-inbox';
+  static String requestInbox(int companyId, {String? status}) {
+    final baseEndpoint = '$baseUrl/planning/companies/$companyId/request-inbox';
+    if (status != null && status.isNotEmpty) {
+      return '$baseEndpoint?status=${Uri.encodeComponent(status)}';
+    }
+    return baseEndpoint;
+  }
 }

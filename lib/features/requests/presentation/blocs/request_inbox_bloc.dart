@@ -20,7 +20,7 @@ class RequestInboxBloc extends Bloc<RequestInboxEvent, RequestInboxState> {
   ) async {
     emit(state.copyWith(status: RequestInboxStatus.loading));
     try {
-      final list = await service.getRequestInbox(companyId: e.companyId);
+      final list = await service.getRequestInbox(companyId: e.companyId, status: e.status);
       emit(state.copyWith(
         status: RequestInboxStatus.success,
         requests: list,
@@ -40,7 +40,7 @@ class RequestInboxBloc extends Bloc<RequestInboxEvent, RequestInboxState> {
   ) async {
     emit(state.copyWith(status: RequestInboxStatus.loading));
     try {
-      final list = await service.getRequestInbox(companyId: e.companyId);
+      final list = await service.getRequestInbox(companyId: e.companyId, status: e.status);
       emit(state.copyWith(
         status: RequestInboxStatus.success,
         requests: list,
@@ -54,6 +54,9 @@ class RequestInboxBloc extends Bloc<RequestInboxEvent, RequestInboxState> {
     }
   }
 }
+
+
+
 
 
 

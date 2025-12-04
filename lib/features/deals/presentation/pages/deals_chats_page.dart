@@ -178,9 +178,13 @@ class _ChatsPageState extends State<ChatsPage> {
       );
     }
     
-    return ListView(
-      padding: const EdgeInsets.all(25),
-      children: _chats.map((chat) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadChats();
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(25),
+        children: _chats.map((chat) {
         final isCustomer = widget.userRole == UserRole.customer;
         
         // Determinar el nombre según el rol
@@ -223,6 +227,7 @@ class _ChatsPageState extends State<ChatsPage> {
           },
         );
       }).toList(),
+      ),
     );
   }
 }

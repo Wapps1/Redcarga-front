@@ -652,9 +652,15 @@ class _CotizacionPageState extends State<CotizacionPage>
     final isTodasTab = _tabController.index == 0;
     final isOtherTabs = _tabController.index == 1 || _tabController.index == 2; // "EN TRATO" o "EN MARCHA"
     
-    return ListView(
-      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
-      children: _quotes.map((quote) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (_selectedRequest != null) {
+          await _loadQuotes(_selectedRequest!.requestId);
+        }
+      },
+      child: ListView(
+        padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+        children: _quotes.map((quote) {
         final company = _companies[quote.companyId];
         final empresaNombre = company?.tradeName ?? company?.legalName ?? 'Empresa ${quote.companyId}';
         
@@ -708,6 +714,7 @@ class _CotizacionPageState extends State<CotizacionPage>
           } : null,
         );
       }).toList(),
+      ),
     );
   }
 

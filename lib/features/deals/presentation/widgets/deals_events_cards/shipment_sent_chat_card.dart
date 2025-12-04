@@ -69,10 +69,10 @@ class ShipmentSentChatCard extends StatelessWidget {
                 width: 35,
                 height: 35,
                 fit: BoxFit.contain,
-                colorFilter: const ColorFilter.mode(
+                /*colorFilter: const ColorFilter.mode(
                   rcWhite,
                   BlendMode.srcIn,
-                ),
+                ),*/
                 placeholderBuilder: (context) => Icon(
                   Icons.local_shipping,
                   size: 35,

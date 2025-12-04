@@ -41,7 +41,6 @@ import 'package:red_carga/features/auth/data/repositories/identity_remote_reposi
 import 'package:red_carga/features/auth/data/services/identity_service.dart';
 import 'package:red_carga/features/auth/data/models/user_identity_dto.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 
 class ChatPage extends StatefulWidget {
   final int quoteId;
@@ -151,6 +150,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   bool _isChecklistExpanded = false; // Estado de expansión del checklist
   List<GuideDto> _guides = []; // Guías de remisión
   bool _isLoadingGuides = false; // Estado de carga de guías
+  String? _selectedImagePath; // Ruta de la imagen seleccionada para preview
 
   @override
   void initState() {
@@ -282,30 +282,35 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       // Determinar si el trato está aceptado basándose en el stateCode
       final isAccepted = quoteDetail.stateCode == 'ACEPTADA';
       
-      if (mounted) {
-        setState(() {
-          _actualAcceptedDeal = isAccepted;
-          _currentQuotePrice = quoteDetail.totalAmount;
-          
-          // Actualizar el TabController si es necesario
-          if (isAccepted && _tabController.length == 1) {
-            _tabController.dispose();
-            _tabController = TabController(length: 2, vsync: this);
-            _tabController.addListener(() {
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      setState(() {
+        _actualAcceptedDeal = isAccepted;
+        _currentQuotePrice = quoteDetail.totalAmount;
+        
+        // Actualizar el TabController si es necesario
+        if (isAccepted && _tabController.length == 1) {
+          _tabController.dispose();
+          _tabController = TabController(length: 2, vsync: this);
+          _tabController.addListener(() {
+            if (mounted) {
               setState(() {});
-            });
-          } else if (!isAccepted && _tabController.length == 2) {
-            _tabController.dispose();
-            _tabController = TabController(length: 1, vsync: this);
-            _tabController.addListener(() {
+            }
+          });
+        } else if (!isAccepted && _tabController.length == 2) {
+          _tabController.dispose();
+          _tabController = TabController(length: 1, vsync: this);
+          _tabController.addListener(() {
+            if (mounted) {
               setState(() {});
-            });
-          }
-        });
-      }
+            }
+          });
+        }
+      });
     } catch (e) {
       print('❌ Error loading quote state: $e');
       // En caso de error, mantener el valor por defecto
+      // No hacer nada que pueda causar navegación
     }
   }
 
@@ -624,13 +629,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Área de chat
           Expanded(
-            child: _isLoadingMessages
+            child: _isLoadingMessages && _messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
-              itemBuilder: (context, index) {
+                : RefreshIndicator(
+              onRefresh: () async {
+                await _loadChatMessages();
+              },
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
+                itemBuilder: (context, index) {
                       // Mostrar cards de acciones especiales si existen (solo si no hay mensaje del sistema correspondiente)
                 if (index == _messages.length && _otherPersonAction != ChatAction.none) {
                         // Verificar si ya existe un mensaje del sistema para esta acción
@@ -677,6 +686,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         ],
                 );
               },
+              ),
             ),
           ),
 
@@ -798,78 +808,39 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     
     switch (subtypeCode) {
       case 'CHANGE_PROPOSED':
-        // Si acceptedDeal es true, mostrar card de editar documento
-        // Si acceptedDeal es false, mostrar card de contraoferta
+        // Siempre mostrar card de editar documento para cambios propuestos
         final changeData = _extractChangeFromInfo(message.info);
         final isCreatedByMe = changeData?['createdBy'] != null && 
                               _currentAccountId != null && 
                               changeData!['createdBy'] == _currentAccountId;
         
-        if (_actualAcceptedDeal) {
-          // Si el cambio está pendiente y no lo creó el usuario actual, mostrar botón para ver cotización
-          return EditDealChatCard(
-            acceptedDeal: _actualAcceptedDeal,
-            isMyEdit: isCreatedByMe,
-            statusCode: changeData?['statusCode'] as String?,
-            timestamp: message.timestamp,
-            onVerCotizacion: changeData?['statusCode'] == 'PENDIENTE' &&
-                    changeData?['changeId'] != null &&
-                    !isCreatedByMe
-                ? () => _verCotizacionConCambios(
-                      widget.quoteId,
-                      changeData!['changeId'] as int,
-                    )
-                : null,
-          );
-        } else {
-          // Contraoferta propuesta
-          final price = _extractPriceFromInfo(message.info);
-          return CounterofferChatCard(
-            precio: price ?? 0.0,
-            isMyCounteroffer: isMe,
-            statusCode: changeData?['statusCode'] as String?,
-            timestamp: message.timestamp,
-            onVerCotizacion: changeData?['statusCode'] == 'PENDIENTE' &&
-                    changeData?['changeId'] != null &&
-                    !isCreatedByMe
-                ? () => _verCotizacionConCambios(
-                      widget.quoteId,
-                      changeData!['changeId'] as int,
-                    )
-                : null,
-            onAceptar: () {
-              // TODO: Aceptar contraoferta
-            },
-            onRechazar: () {
-              // TODO: Rechazar contraoferta
-            },
-          );
-        }
+        return EditDealChatCard(
+          acceptedDeal: _actualAcceptedDeal,
+          isMyEdit: isCreatedByMe,
+          statusCode: changeData?['statusCode'] as String?,
+          timestamp: message.timestamp,
+          onVerCotizacion: changeData?['statusCode'] == 'PENDIENTE' &&
+                  changeData?['changeId'] != null &&
+                  !isCreatedByMe
+              ? () => _verCotizacionConCambios(
+                    widget.quoteId,
+                    changeData!['changeId'] as int,
+                  )
+              : null,
+        );
       case 'CHANGE_ACCEPTED':
-        // Cambio aceptado - mostrar card según si es acceptedDeal o no
+        // Siempre mostrar card de editar documento para cambios aceptados
         final changeDataAccepted = _extractChangeFromInfo(message.info);
         final isCreatedByMeAccepted = changeDataAccepted?['createdBy'] != null && 
                                       _currentAccountId != null && 
                                       changeDataAccepted!['createdBy'] == _currentAccountId;
         
-        if (_actualAcceptedDeal) {
-          return EditDealChatCard(
-            acceptedDeal: _actualAcceptedDeal,
-            isMyEdit: isCreatedByMeAccepted,
-            statusCode: changeDataAccepted?['statusCode'] as String?,
-            timestamp: message.timestamp,
-          );
-        } else {
-          // Cambio aceptado (contraoferta)
-          final changeData = _extractChangeFromInfo(message.info);
-          final price = _extractPriceFromInfo(message.info);
-          return CounterofferChatCard(
-            precio: price ?? 0.0,
-            isMyCounteroffer: isMe,
-            statusCode: changeData?['statusCode'] as String?,
-            timestamp: message.timestamp,
-          );
-        }
+        return EditDealChatCard(
+          acceptedDeal: _actualAcceptedDeal,
+          isMyEdit: isCreatedByMeAccepted,
+          statusCode: changeDataAccepted?['statusCode'] as String?,
+          timestamp: message.timestamp,
+        );
       case 'ACCEPTANCE_CONFIRMED':
       case 'ACCEPTANCE_REQUEST':
         // Trato aceptado
@@ -1114,6 +1085,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Widget _buildImageMessage(ChatMessage message, ColorScheme colorScheme) {
+    // Determinar si es una URL remota o una ruta local
+    final bool isUrl = message.imagePath != null && 
+                       (message.imagePath!.startsWith('http://') || 
+                        message.imagePath!.startsWith('https://'));
+    
     return Align(
       alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1130,20 +1106,51 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (message.imagePath != null)
-                Image.file(
-                  File(message.imagePath!),
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 200,
-                      color: rcColor8.withOpacity(0.3),
-                      child: const Center(
-                        child: Icon(Icons.broken_image, color: rcWhite, size: 50),
+                isUrl
+                    ? Image.network(
+                        message.imagePath!,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            height: 200,
+                            color: rcColor8.withOpacity(0.3),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 200,
+                            color: rcColor8.withOpacity(0.3),
+                            child: const Center(
+                              child: Icon(Icons.broken_image, color: rcWhite, size: 50),
+                            ),
+                          );
+                        },
+                      )
+                    : Image.file(
+                        File(message.imagePath!),
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 200,
+                            color: rcColor8.withOpacity(0.3),
+                            child: const Center(
+                              child: Icon(Icons.broken_image, color: rcWhite, size: 50),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
                 Padding(
                   padding: const EdgeInsets.all(12),
                 child: Column(
@@ -1549,108 +1556,163 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Botón adjuntar documento
-          IconButton(
-            onPressed: _seleccionarArchivo,
-            icon: Icon(
-              Icons.attach_file,
-              color: colorScheme.primary,
-            ),
-          ),
-          // Botón tomar/seleccionar foto
-          PopupMenuButton<String>(
-            icon: Icon(
-              Icons.camera_alt,
-              color: colorScheme.primary,
-            ),
-            onSelected: (value) {
-              if (value == 'camera') {
-                _tomarFoto();
-              } else if (value == 'gallery') {
-                _seleccionarFoto();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'camera',
-                child: Row(
-                  children: [
-                    Icon(Icons.camera_alt),
-                    SizedBox(width: 8),
-                    Text('Tomar foto'),
-                  ],
+          // Preview de imagen si hay una seleccionada
+          if (_selectedImagePath != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: colorScheme.primary.withOpacity(0.3),
+                  width: 1,
                 ),
               ),
-              const PopupMenuItem(
-                value: 'gallery',
-                child: Row(
-                  children: [
-                    Icon(Icons.photo_library),
-                    SizedBox(width: 8),
-                    Text('Seleccionar de galería'),
-                  ],
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(_selectedImagePath!),
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 200,
+                          color: rcColor8.withOpacity(0.3),
+                          child: const Center(
+                            child: Icon(Icons.broken_image, color: rcWhite, size: 50),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  // Botón para eliminar la imagen
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: rcWhite, size: 20),
+                        onPressed: () {
+                          setState(() {
+                            _selectedImagePath = null;
+                          });
+                        },
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          Row(
+            children: [
+              // Botón tomar/seleccionar foto
+              PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.camera_alt,
+                  color: colorScheme.primary,
+                ),
+                onSelected: (value) {
+                  if (value == 'camera') {
+                    _tomarFoto();
+                  } else if (value == 'gallery') {
+                    _seleccionarFoto();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'camera',
+                    child: Row(
+                      children: [
+                        Icon(Icons.camera_alt),
+                        SizedBox(width: 8),
+                        Text('Tomar foto'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'gallery',
+                    child: Row(
+                      children: [
+                        Icon(Icons.photo_library),
+                        SizedBox(width: 8),
+                        Text('Seleccionar de galería'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Campo de texto
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextField(
+                    controller: _messageController,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _enviarMensaje(),
+                    keyboardType: TextInputType.multiline,
+                    maxLines: 4,
+                    minLines: 1,
+                    decoration: InputDecoration(
+                      hintText: _selectedImagePath != null 
+                          ? 'Escribe un mensaje para la imagen...'
+                          : 'Escribe un mensaje',
+                      hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: rcWhite,
+                          ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: rcWhite,
+                        ),
+                    textCapitalization: TextCapitalization.sentences,
+                    enableSuggestions: true,
+                    autocorrect: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Botón enviar
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _enviarMensaje,
+                    borderRadius: BorderRadius.circular(24),
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(
+                        Icons.send,
+                        color: rcWhite,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
-          // Campo de texto
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: TextField(
-                controller: _messageController,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _enviarMensaje(),
-                keyboardType: TextInputType.multiline,
-                maxLines: 4,
-                minLines: 1,
-                decoration: InputDecoration(
-                  hintText: 'Escribe un mensaje',
-                  hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: rcWhite,
-                      ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: rcWhite,
-                    ),
-                textCapitalization: TextCapitalization.sentences,
-                enableSuggestions: true,
-                autocorrect: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Botón enviar
-          Container(
-            decoration: BoxDecoration(
-              color: colorScheme.primary,
-              shape: BoxShape.circle,
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _enviarMensaje,
-                borderRadius: BorderRadius.circular(24),
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(
-                    Icons.send,
-                    color: rcWhite,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -2182,39 +2244,41 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onRealizarContraoferta: (nuevoPrecio) async {
             Navigator.of(context).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             // Mostrar el card de contraoferta inmediatamente (optimista)
-            if (mounted) {
             setState(() {
               _otherPersonAction = ChatAction.counteroffer;
               _counterofferPrice = nuevoPrecio;
               _isMyCounteroffer = true;
-                _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
-              });
-            }
+              _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
+            });
             
             // Aplicar la contraoferta usando el mismo endpoint que editar cotización
             try {
               await _aplicarContraoferta(nuevoPrecio);
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // Recargar mensajes para obtener el evento del sistema
               // El card se mantendrá visible hasta que llegue el mensaje del sistema
-              if (mounted) {
-                await _loadChatMessages();
-                
-                // Después de recargar, verificar si ya llegó el mensaje del sistema
-                // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
-                final hasSystemMessage = _messages.any((msg) => 
-                  msg.isSystemEvent && 
-                  msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
-                  msg.isMe
-                );
-                
-                if (hasSystemMessage && mounted) {
-                  // Si ya llegó el mensaje del sistema, limpiar la acción temporal
-                  setState(() {
-                    _otherPersonAction = ChatAction.none;
-                  });
-                }
+              await _loadChatMessages();
+              
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Después de recargar, verificar si ya llegó el mensaje del sistema
+              // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
+              final hasSystemMessage = _messages.any((msg) => 
+                msg.isSystemEvent && 
+                msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                msg.isMe
+              );
+              
+              if (hasSystemMessage && mounted) {
+                // Si ya llegó el mensaje del sistema, limpiar la acción temporal
+                setState(() {
+                  _otherPersonAction = ChatAction.none;
+                });
               }
             } catch (e) {
               // En caso de error, mantener el card visible pero mostrar error
@@ -2294,18 +2358,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarPago: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.paymentMade(widget.quoteId);
               
-              if (mounted) {
-            setState(() {
-              _otherPersonAction = ChatAction.paymentMade;
-              _isMyPayment = true;
-            });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              setState(() {
+                _otherPersonAction = ChatAction.paymentMade;
+                _isMyPayment = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2333,13 +2399,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarRecepcion: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.paymentConfirm(widget.quoteId);
               
-              if (mounted) {
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2413,20 +2481,22 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onAceptarTrato: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             // Crear la aceptación en el servidor
             try {
               await _dealsRepository.createAcceptance(widget.quoteId);
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // Mostrar la card directamente
-                if (mounted) {
-                  setState(() {
-                    _otherPersonAction = ChatAction.dealAcceptance;
-                    _isMyDealAcceptance = true;
-                });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              setState(() {
+                _otherPersonAction = ChatAction.dealAcceptance;
+                _isMyDealAcceptance = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2475,6 +2545,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             onAsignar: (driverId, vehicleId) async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               // Asignar flota y conductor
               await _dealsRepository.assignFleetDriver(
@@ -2483,15 +2555,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 vehicleId,
               );
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // La aceptación ya se creó en el paso anterior, solo actualizar UI
-            if (mounted) {
               setState(() {
                 _otherPersonAction = ChatAction.dealAcceptance;
                 _isMyDealAcceptance = true;
-                });
-                
-                // Recargar mensajes y asignación
-                await _loadChatMessages();
+              });
+              
+              // Recargar mensajes y asignación
+              await _loadChatMessages();
+              if (mounted) {
                 await _loadAssignment();
               }
             } catch (e) {
@@ -2550,16 +2624,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   /// Confirma una aceptación de trato pendiente
   Future<void> _confirmarAceptacion(int acceptanceId) async {
+    if (!mounted) return; // Verificar que el widget siga montado
+    
     try {
       await _dealsRepository.confirmAcceptance(widget.quoteId, acceptanceId);
       
-      if (mounted) {
-        // Recargar mensajes para obtener el estado actualizado
-        await _loadChatMessages();
-        
-        // Actualizar el estado si es necesario
-        await _loadQuoteState();
-      }
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Recargar mensajes para obtener el estado actualizado
+      await _loadChatMessages();
+      
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Actualizar el estado si es necesario
+      await _loadQuoteState();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2574,13 +2652,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   /// Rechaza una aceptación de trato pendiente
   Future<void> _rechazarAceptacion(int acceptanceId) async {
+    if (!mounted) return; // Verificar que el widget siga montado
+    
     try {
       await _dealsRepository.rejectAcceptance(widget.quoteId, acceptanceId);
       
-      if (mounted) {
-        // Recargar mensajes para obtener el estado actualizado
-        await _loadChatMessages();
-      }
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Recargar mensajes para obtener el estado actualizado
+      await _loadChatMessages();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2635,18 +2715,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarEnvio: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.shipmentSent(widget.quoteId);
               
-              if (mounted) {
-                setState(() {
-                  _otherPersonAction = ChatAction.shipmentSent;
-                  _isMyShipmentSent = true;
-                });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              setState(() {
+                _otherPersonAction = ChatAction.shipmentSent;
+                _isMyShipmentSent = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2674,20 +2756,24 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarRecepcion: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.shipmentReceived(widget.quoteId);
               
-              if (mounted) {
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-                
-                // Mostrar modal de calificación después de confirmar recepción
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _mostrarModalCalificacion();
-                  }
-                });
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
+              
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Mostrar modal de calificación después de confirmar recepción
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _mostrarModalCalificacion();
+                }
+              });
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2707,6 +2793,25 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   // Métodos para manejar mensajes, archivos y fotos
   Future<void> _enviarMensaje() async {
     final text = _messageController.text.trim();
+    
+    // Si hay una imagen seleccionada, enviar la imagen con el mensaje
+    if (_selectedImagePath != null) {
+      if (text.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Por favor escribe un mensaje para acompañar la imagen'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      await _enviarImagen(_selectedImagePath!);
+      return;
+    }
+    
+    // Si no hay imagen, enviar mensaje de texto normal
     if (text.isEmpty) return;
 
     // Crear mensaje optimista
@@ -2749,51 +2854,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _seleccionarArchivo() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
-      );
-
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.single;
-        // En algunas plataformas (web), path puede ser null, usar name como respaldo
-        final filePath = file.path;
-        final fileName = file.name;
-        
-        if (filePath != null || fileName.isNotEmpty) {
-          final newMessage = ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            text: 'Archivo adjunto: $fileName',
-            isMe: true,
-            timestamp: DateTime.now(),
-            filePath: filePath,
-            fileName: fileName,
-            type: MessageType.file,
-          );
-          
-          setState(() {
-            _messages.add(newMessage);
-          });
-          
-          _scrollToBottom();
-          
-          // TODO: Subir archivo al servidor
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al seleccionar archivo: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _tomarFoto() async {
     try {
       final XFile? image = await _imagePicker.pickImage(
@@ -2802,7 +2862,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       );
 
       if (image != null) {
-        await _enviarImagen(image.path);
+        setState(() {
+          _selectedImagePath = image.path;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -2824,7 +2886,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       );
 
       if (image != null) {
-        await _enviarImagen(image.path);
+        setState(() {
+          _selectedImagePath = image.path;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -2841,11 +2905,29 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   Future<void> _enviarImagen(String imagePath) async {
     final caption = _messageController.text.trim();
     
+    // Validar que haya un caption
+    if (caption.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por favor escribe un mensaje para acompañar la imagen'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // Limpiar la imagen seleccionada
+    setState(() {
+      _selectedImagePath = null;
+    });
+    
     // Crear mensaje optimista
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final newMessage = ChatMessage(
       id: tempId,
-      text: caption.isNotEmpty ? caption : null,
+      text: caption,
       isMe: true,
       timestamp: DateTime.now(),
       imagePath: imagePath,
@@ -2874,11 +2956,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       // Subir imagen a Cloudinary
       final uploadResponse = await _dealsRepository.uploadImage(imagePath);
 
-      // Enviar mensaje de imagen
+      // Enviar mensaje de imagen (siempre con caption)
       await _dealsRepository.sendImageMessage(
         widget.quoteId,
         uploadResponse.secureUrl,
-        caption: caption.isNotEmpty ? caption : null,
+        caption: caption,
       );
 
       // Recargar mensajes para obtener el mensaje real del servidor
@@ -2887,9 +2969,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       // Remover mensaje optimista en caso de error
       setState(() {
         _messages.removeWhere((msg) => msg.id == tempId);
-        if (caption.isNotEmpty) {
-          _messageController.text = caption; // Restaurar el texto
-        }
+        _messageController.text = caption; // Restaurar el texto
+        _selectedImagePath = imagePath; // Restaurar la imagen
       });
 
       if (mounted) {

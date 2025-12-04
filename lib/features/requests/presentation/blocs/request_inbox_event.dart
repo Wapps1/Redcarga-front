@@ -12,3 +12,4 @@ class RequestInboxRefresh extends RequestInboxEvent {
 }
 
 
+

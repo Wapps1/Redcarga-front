@@ -28,25 +28,8 @@ class RequestsPage extends StatelessWidget {
       return const SolicitudesPage();
     }
 
-    // Si es cliente, mostrar vista de plantillas (vista actual)
-    return BlocProvider(
-      create: (context) => RequestsBloc()..add(const RequestsLoadTemplates()),
-      child: Scaffold(
-        backgroundColor: rcColor1,
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Header con gradiente
-              _buildHeader(context),
-              // Contenido principal
-              Expanded(
-                child: _buildContent(context),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    // Si es cliente, ir directamente al formulario de crear solicitud
+    return const CreateRequestPage();
   }
 
   UserRole _getRoleFromContext(BuildContext context) {

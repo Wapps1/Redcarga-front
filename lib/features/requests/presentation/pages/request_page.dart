@@ -221,22 +221,18 @@ class _SolicitudesPageState extends State<_SolicitudesView>
             children: [
               // Título
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
                 child: Row(
                   children: [
-                    Text(
-                      'Solicitudes',
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: rcWhite,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 24,
+                    Expanded(
+                      child: Text(
+                        'Solicitudes',
+                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                          color: rcWhite,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.more_vert, color: rcWhite),
-                      onPressed: () {
-                        // Acción del menú
-                      },
                     ),
                   ],
                 ),
@@ -474,6 +470,8 @@ class _SolicitudesPageState extends State<_SolicitudesView>
                 ),
               ],
             ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
           ),
           const SizedBox(height: 8),
           // Detalles

@@ -282,30 +282,35 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       // Determinar si el trato está aceptado basándose en el stateCode
       final isAccepted = quoteDetail.stateCode == 'ACEPTADA';
       
-      if (mounted) {
-        setState(() {
-          _actualAcceptedDeal = isAccepted;
-          _currentQuotePrice = quoteDetail.totalAmount;
-          
-          // Actualizar el TabController si es necesario
-          if (isAccepted && _tabController.length == 1) {
-            _tabController.dispose();
-            _tabController = TabController(length: 2, vsync: this);
-            _tabController.addListener(() {
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      setState(() {
+        _actualAcceptedDeal = isAccepted;
+        _currentQuotePrice = quoteDetail.totalAmount;
+        
+        // Actualizar el TabController si es necesario
+        if (isAccepted && _tabController.length == 1) {
+          _tabController.dispose();
+          _tabController = TabController(length: 2, vsync: this);
+          _tabController.addListener(() {
+            if (mounted) {
               setState(() {});
-            });
-          } else if (!isAccepted && _tabController.length == 2) {
-            _tabController.dispose();
-            _tabController = TabController(length: 1, vsync: this);
-            _tabController.addListener(() {
+            }
+          });
+        } else if (!isAccepted && _tabController.length == 2) {
+          _tabController.dispose();
+          _tabController = TabController(length: 1, vsync: this);
+          _tabController.addListener(() {
+            if (mounted) {
               setState(() {});
-            });
-          }
-        });
-      }
+            }
+          });
+        }
+      });
     } catch (e) {
       print('❌ Error loading quote state: $e');
       // En caso de error, mantener el valor por defecto
+      // No hacer nada que pueda causar navegación
     }
   }
 
@@ -624,13 +629,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         children: [
           // Área de chat
           Expanded(
-            child: _isLoadingMessages
+            child: _isLoadingMessages && _messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
-              itemBuilder: (context, index) {
+                : RefreshIndicator(
+              onRefresh: () async {
+                await _loadChatMessages();
+              },
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + (_otherPersonAction != ChatAction.none ? 1 : 0),
+                itemBuilder: (context, index) {
                       // Mostrar cards de acciones especiales si existen (solo si no hay mensaje del sistema correspondiente)
                 if (index == _messages.length && _otherPersonAction != ChatAction.none) {
                         // Verificar si ya existe un mensaje del sistema para esta acción
@@ -677,6 +686,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                         ],
                 );
               },
+              ),
             ),
           ),
 
@@ -2234,39 +2244,41 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onRealizarContraoferta: (nuevoPrecio) async {
             Navigator.of(context).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             // Mostrar el card de contraoferta inmediatamente (optimista)
-            if (mounted) {
             setState(() {
               _otherPersonAction = ChatAction.counteroffer;
               _counterofferPrice = nuevoPrecio;
               _isMyCounteroffer = true;
-                _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
-              });
-            }
+              _currentQuotePrice = nuevoPrecio; // Actualizar precio actual
+            });
             
             // Aplicar la contraoferta usando el mismo endpoint que editar cotización
             try {
               await _aplicarContraoferta(nuevoPrecio);
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // Recargar mensajes para obtener el evento del sistema
               // El card se mantendrá visible hasta que llegue el mensaje del sistema
-              if (mounted) {
-                await _loadChatMessages();
-                
-                // Después de recargar, verificar si ya llegó el mensaje del sistema
-                // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
-                final hasSystemMessage = _messages.any((msg) => 
-                  msg.isSystemEvent && 
-                  msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
-                  msg.isMe
-                );
-                
-                if (hasSystemMessage && mounted) {
-                  // Si ya llegó el mensaje del sistema, limpiar la acción temporal
-                  setState(() {
-                    _otherPersonAction = ChatAction.none;
-                  });
-                }
+              await _loadChatMessages();
+              
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Después de recargar, verificar si ya llegó el mensaje del sistema
+              // Si llegó, el card se mostrará desde los mensajes, si no, se mantiene el temporal
+              final hasSystemMessage = _messages.any((msg) => 
+                msg.isSystemEvent && 
+                msg.systemSubtypeCode == 'CHANGE_PROPOSED' &&
+                msg.isMe
+              );
+              
+              if (hasSystemMessage && mounted) {
+                // Si ya llegó el mensaje del sistema, limpiar la acción temporal
+                setState(() {
+                  _otherPersonAction = ChatAction.none;
+                });
               }
             } catch (e) {
               // En caso de error, mantener el card visible pero mostrar error
@@ -2346,18 +2358,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarPago: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.paymentMade(widget.quoteId);
               
-              if (mounted) {
-            setState(() {
-              _otherPersonAction = ChatAction.paymentMade;
-              _isMyPayment = true;
-            });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              setState(() {
+                _otherPersonAction = ChatAction.paymentMade;
+                _isMyPayment = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2385,13 +2399,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarRecepcion: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.paymentConfirm(widget.quoteId);
               
-              if (mounted) {
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2465,20 +2481,22 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onAceptarTrato: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             // Crear la aceptación en el servidor
             try {
               await _dealsRepository.createAcceptance(widget.quoteId);
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // Mostrar la card directamente
-                if (mounted) {
-                  setState(() {
-                    _otherPersonAction = ChatAction.dealAcceptance;
-                    _isMyDealAcceptance = true;
-                });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              setState(() {
+                _otherPersonAction = ChatAction.dealAcceptance;
+                _isMyDealAcceptance = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2527,6 +2545,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
             onAsignar: (driverId, vehicleId) async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               // Asignar flota y conductor
               await _dealsRepository.assignFleetDriver(
@@ -2535,15 +2555,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 vehicleId,
               );
               
+              if (!mounted) return; // Verificar que el widget siga montado
+              
               // La aceptación ya se creó en el paso anterior, solo actualizar UI
-            if (mounted) {
               setState(() {
                 _otherPersonAction = ChatAction.dealAcceptance;
                 _isMyDealAcceptance = true;
-                });
-                
-                // Recargar mensajes y asignación
-                await _loadChatMessages();
+              });
+              
+              // Recargar mensajes y asignación
+              await _loadChatMessages();
+              if (mounted) {
                 await _loadAssignment();
               }
             } catch (e) {
@@ -2602,16 +2624,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   /// Confirma una aceptación de trato pendiente
   Future<void> _confirmarAceptacion(int acceptanceId) async {
+    if (!mounted) return; // Verificar que el widget siga montado
+    
     try {
       await _dealsRepository.confirmAcceptance(widget.quoteId, acceptanceId);
       
-      if (mounted) {
-        // Recargar mensajes para obtener el estado actualizado
-        await _loadChatMessages();
-        
-        // Actualizar el estado si es necesario
-        await _loadQuoteState();
-      }
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Recargar mensajes para obtener el estado actualizado
+      await _loadChatMessages();
+      
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Actualizar el estado si es necesario
+      await _loadQuoteState();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2626,13 +2652,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
   /// Rechaza una aceptación de trato pendiente
   Future<void> _rechazarAceptacion(int acceptanceId) async {
+    if (!mounted) return; // Verificar que el widget siga montado
+    
     try {
       await _dealsRepository.rejectAcceptance(widget.quoteId, acceptanceId);
       
-      if (mounted) {
-        // Recargar mensajes para obtener el estado actualizado
-        await _loadChatMessages();
-      }
+      if (!mounted) return; // Verificar que el widget siga montado
+      
+      // Recargar mensajes para obtener el estado actualizado
+      await _loadChatMessages();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2687,18 +2715,20 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarEnvio: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.shipmentSent(widget.quoteId);
               
-              if (mounted) {
-                setState(() {
-                  _otherPersonAction = ChatAction.shipmentSent;
-                  _isMyShipmentSent = true;
-                });
-                
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              setState(() {
+                _otherPersonAction = ChatAction.shipmentSent;
+                _isMyShipmentSent = true;
+              });
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2726,20 +2756,24 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           onConfirmarRecepcion: () async {
             Navigator.of(dialogContext).pop(); // Cerrar el modal
             
+            if (!mounted) return; // Verificar que el widget siga montado
+            
             try {
               await _dealsRepository.shipmentReceived(widget.quoteId);
               
-              if (mounted) {
-                // Recargar mensajes para obtener el evento del sistema
-                await _loadChatMessages();
-                
-                // Mostrar modal de calificación después de confirmar recepción
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _mostrarModalCalificacion();
-                  }
-                });
-              }
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Recargar mensajes para obtener el evento del sistema
+              await _loadChatMessages();
+              
+              if (!mounted) return; // Verificar que el widget siga montado
+              
+              // Mostrar modal de calificación después de confirmar recepción
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _mostrarModalCalificacion();
+                }
+              });
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(

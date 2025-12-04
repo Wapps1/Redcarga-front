@@ -91,10 +91,10 @@ class EditDealChatCard extends StatelessWidget {
                 width: 35,
                 height: 35,
                 fit: BoxFit.contain,
-                colorFilter: ColorFilter.mode(
+                /*colorFilter: ColorFilter.mode(
                   rcWhite,
                   BlendMode.srcIn,
-                ),
+                ),*/
                 placeholderBuilder: (context) => Icon(
                   Icons.edit_document,
                   size: 35,

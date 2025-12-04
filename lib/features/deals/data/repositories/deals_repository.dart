@@ -196,7 +196,7 @@ class DealsRepository {
   }
 
   /// Envía un mensaje de imagen al chat
-  Future<void> sendImageMessage(int quoteId, String imageUrl, {String? caption}) async {
+  Future<void> sendImageMessage(int quoteId, String imageUrl, {required String caption}) async {
     try {
       final accessToken = await _getAccessToken();
       return await _dealsService.sendImageMessage(quoteId, imageUrl, caption, accessToken);

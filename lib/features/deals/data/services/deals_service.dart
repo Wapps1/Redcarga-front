@@ -807,18 +807,32 @@ class DealsService {
   }
 
   /// Envía un mensaje de imagen al chat
+  /// El caption es requerido y no puede ser null ni vacío
   Future<void> sendImageMessage(
     int quoteId,
     String imageUrl,
-    String? caption,
+    String caption,
     String accessToken,
   ) async {
     final url = Uri.parse('${ApiConstants.baseUrl}/api/deals/quotes/$quoteId/chat/messages');
 
     print('🚀 [DealsService] POST $url');
     print('📤 [DealsService] Sending image message: $imageUrl');
+    print('📤 [DealsService] Caption: $caption');
 
     try {
+      // Construir el body según el formato esperado por el backend
+      // El caption es requerido
+      final bodyMap = <String, dynamic>{
+        'dedupKey': null,
+        'kind': 'IMAGE',
+        'text': null,
+        'url': imageUrl,
+        'caption': caption,
+      };
+
+      print('📤 [DealsService] Request body: ${jsonEncode(bodyMap)}');
+
       final response = await _client.post(
         url,
         headers: {
@@ -826,13 +840,7 @@ class DealsService {
           'Authorization': 'Bearer $accessToken',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'dedupKey': null,
-          'kind': 'IMAGE',
-          'text': null,
-          'url': imageUrl,
-          'caption': caption,
-        }),
+        body: jsonEncode(bodyMap),
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {

@@ -71,10 +71,10 @@ class CancelDealChatCard extends StatelessWidget {
                 width: 50,
                 height: 50,
                 fit: BoxFit.contain,
-                colorFilter: ColorFilter.mode(
+                /*colorFilter: ColorFilter.mode(
                   rcWhite,
                   BlendMode.srcIn,
-                ),
+                ),*/
                 placeholderBuilder: (context) => Icon(
                   Icons.close,
                   size: 50,

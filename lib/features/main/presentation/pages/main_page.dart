@@ -45,7 +45,7 @@ class _MainPageState extends State<MainPage> {
 
   late final List<Widget> _driverPages = <Widget>[
     DriverHomePage(onNavigateToMap: () => _onTabChanged(1)),
-    const DriverMapPage(),
+    DriverMapPage(quoteId: 0),
     const DriverProfilePage(),
   ];
 
